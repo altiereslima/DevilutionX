@@ -39,6 +39,9 @@ SDL_Keycode TranslateControllerButtonToGameMenuKey(ControllerButton controllerBu
 	case ControllerButton_BUTTON_START:
 		return SDLK_ESCAPE;
 	case ControllerButton_BUTTON_LEFTSTICK:
+		if (!automapflag) {
+			GetOptions().Gameplay.automap.SetValue(true);  // Force minimap mode when first opening
+		}
 		return SDLK_TAB; // Map
 	default:
 		return SDLK_UNKNOWN;
@@ -308,21 +311,23 @@ void PressControllerButton(ControllerButton button)
 
 ControllerButton TranslateTo(GamepadLayout layout, ControllerButton button)
 {
-	if (layout != GamepadLayout::Nintendo)
-		return button;
+    // For Xbox layout, no translation needed since it's our base mapping
+    if (layout != GamepadLayout::Nintendo)
+        return button;
 
-	switch (button) {
-	case ControllerButton_BUTTON_A:
-		return ControllerButton_BUTTON_B;
-	case ControllerButton_BUTTON_B:
-		return ControllerButton_BUTTON_A;
-	case ControllerButton_BUTTON_X:
-		return ControllerButton_BUTTON_Y;
-	case ControllerButton_BUTTON_Y:
-		return ControllerButton_BUTTON_X;
-	default:
-		return button;
-	}
+    // Only translate when coming from Nintendo layout
+    switch (button) {
+    case ControllerButton_BUTTON_A:
+        return ControllerButton_BUTTON_B;  // A on Nintendo -> B on Xbox
+    case ControllerButton_BUTTON_B:
+        return ControllerButton_BUTTON_A;  // B on Nintendo -> A on Xbox 
+    case ControllerButton_BUTTON_X:
+        return ControllerButton_BUTTON_Y;  // X on Nintendo -> Y on Xbox
+    case ControllerButton_BUTTON_Y:
+        return ControllerButton_BUTTON_X;  // Y on Nintendo -> X on Xbox
+    default:
+        return button;
+    }
 }
 
 bool SkipsMovie(ControllerButtonEvent ctrlEvent)

@@ -78,7 +78,7 @@ enum class GamepadLayout : uint8_t {
 	Generic,
 	Nintendo,
 	PlayStation,
-	Xbox,
+	Xbox,  // Define Xbox layout explicitly
 };
 
 [[nodiscard]] std::string_view ToString(GamepadLayout gamepadType, ControllerButton button);
