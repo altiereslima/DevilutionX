@@ -308,23 +308,23 @@ void PressControllerButton(ControllerButton button)
 
 ControllerButton TranslateTo(GamepadLayout layout, ControllerButton button)
 {
-    // For Xbox layout, no translation needed since it's our base mapping
-    if (layout != GamepadLayout::Nintendo)
-        return button;
-
-    // Only translate when coming from Nintendo layout
-    switch (button) {
-    case ControllerButton_BUTTON_A:
-        return ControllerButton_BUTTON_B;  // A on Nintendo -> B on Xbox
-    case ControllerButton_BUTTON_B:
-        return ControllerButton_BUTTON_A;  // B on Nintendo -> A on Xbox 
-    case ControllerButton_BUTTON_X:
-        return ControllerButton_BUTTON_Y;  // X on Nintendo -> Y on Xbox
-    case ControllerButton_BUTTON_Y:
-        return ControllerButton_BUTTON_X;  // Y on Nintendo -> X on Xbox
-    default:
-        return button;
+    // For Nintendo layout, translate from Xbox (base) to Nintendo mapping
+    if (layout == GamepadLayout::Nintendo) {
+        switch (button) {
+        case ControllerButton_BUTTON_A:
+            return ControllerButton_BUTTON_B;  // A on Xbox -> B on Nintendo
+        case ControllerButton_BUTTON_B:
+            return ControllerButton_BUTTON_A;  // B on Xbox -> A on Nintendo
+        case ControllerButton_BUTTON_X:
+            return ControllerButton_BUTTON_Y;  // X on Xbox -> Y on Nintendo
+        case ControllerButton_BUTTON_Y:
+            return ControllerButton_BUTTON_X;  // Y on Xbox -> X on Nintendo
+        default:
+            return button;
+        }
     }
+    // Xbox layout is the base mapping, no translation needed
+    return button;
 }
 
 bool SkipsMovie(ControllerButtonEvent ctrlEvent)

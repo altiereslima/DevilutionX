@@ -277,7 +277,7 @@ GamepadLayout GameController::getLayout(const SDL_Event &event)
 		break;
 	}
 #endif
-	return GamepadLayout::Xbox; // Alterado de Generic para Xbox
+	return GamepadLayout::Generic;
 #endif // !defined(DEVILUTIONX_GAMEPAD_TYPE)
 }
 
