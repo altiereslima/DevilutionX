@@ -1486,6 +1486,61 @@ bool IsPathBlocked(Point position, Direction dir)
 	return !PosOkPlayer(myPlayer, leftStep) && !PosOkPlayer(myPlayer, rightStep);
 }
 
+Direction GetPathNotBlocked(Point position, Direction dir)
+{
+	Direction d1, d2;
+
+	switch (dir) {
+	case Direction::North:
+		d1 = Direction::NorthWest;
+		d2 = Direction::NorthEast;
+		break;
+	case Direction::East:
+		d1 = Direction::NorthEast;
+		d2 = Direction::SouthEast;
+		break;
+	case Direction::South:
+		d1 = Direction::SouthEast;
+		d2 = Direction::SouthWest;
+		break;
+	case Direction::West:
+		d1 = Direction::SouthWest;
+		d2 = Direction::NorthWest;
+		break;
+	default:
+		return Direction::South; // equivalent to old DIR_OMNI
+	}
+
+	const auto pos1 = position + d1;
+	const auto pos2 = position + d2;
+
+	if (IsTileNotSolid(pos1))
+		return d1;
+	if (IsTileNotSolid(pos2))
+		return d2;
+
+	return Direction::South; // equivalent to old DIR_OMNI
+}
+
+void MoveInDirection(Player &player, Direction dir)
+{
+	Point position = player.position.future;
+	Point delta = position + dir;
+
+	if (!IsTileNotSolid(delta)) {
+		Direction newDir = GetPathNotBlocked(position, dir);
+		if (newDir != Direction::South) { // South used as DIR_OMNI equivalent
+			MoveInDirection(player, newDir);
+			return;
+		}
+	}
+
+	if (PosOkPlayer(player, delta) && IsPathBlocked(position, dir))
+		return; // Don't start backtrack around obstacles
+
+	NetSendCmdLoc(player.getId(), true, CMD_WALKXY, delta);
+}
+
 void WalkInDir(Player &player, AxisDirection dir)
 {
 	if (dir.x == AxisDirectionX_NONE && dir.y == AxisDirectionY_NONE) {
@@ -1495,7 +1550,6 @@ void WalkInDir(Player &player, AxisDirection dir)
 	}
 
 	const Direction pdir = FaceDir[static_cast<std::size_t>(dir.x)][static_cast<std::size_t>(dir.y)];
-	const auto delta = player.position.future + pdir;
 
 	if (!player.isWalking() && player.CanChangeAction())
 		player._pdir = pdir;
@@ -1506,13 +1560,7 @@ void WalkInDir(Player &player, AxisDirection dir)
 		return;
 	}
 
-	if (PosOkPlayer(player, delta) && IsPathBlocked(player.position.future, pdir)) {
-		if (player._pmode == PM_STAND)
-			StartStand(player, pdir);
-		return; // Don't start backtrack around obstacles
-	}
-
-	NetSendCmdLoc(player.getId(), true, CMD_WALKXY, delta);
+	MoveInDirection(player, pdir);
 }
 
 void QuestLogMove(AxisDirection moveDir)
