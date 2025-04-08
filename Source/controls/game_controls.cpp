@@ -39,9 +39,6 @@ SDL_Keycode TranslateControllerButtonToGameMenuKey(ControllerButton controllerBu
 	case ControllerButton_BUTTON_START:
 		return SDLK_ESCAPE;
 	case ControllerButton_BUTTON_LEFTSTICK:
-		if (!automapflag) {
-			GetOptions().Gameplay.automap.SetValue(true);  // Force minimap mode when first opening
-		}
 		return SDLK_TAB; // Map
 	default:
 		return SDLK_UNKNOWN;
