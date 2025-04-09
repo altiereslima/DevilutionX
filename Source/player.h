@@ -218,6 +218,12 @@ struct SpellCastInfo {
 };
 
 struct Player {
+private:
+    static constexpr float PIXEL_MOVE_SPEED = 2.5f; // pixels por frame
+    float partialX = 0.0f;
+    float partialY = 0.0f;
+    bool isMovingSmooth = false;
+
 	Player() = default;
 	Player(Player &&) noexcept = default;
 	Player &operator=(Player &&) noexcept = default;
@@ -823,6 +829,9 @@ public:
 	{
 		return getCharacterLevel() >= getMaxCharacterLevel();
 	}
+
+	void UpdateSmoothMovement();
+    bool IsMovingSmooth() const { return isMovingSmooth; }
 
 private:
 	void _addExperience(uint32_t experience, int levelDelta);

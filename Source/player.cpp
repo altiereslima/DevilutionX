@@ -2027,6 +2027,38 @@ bool Player::isLevelOwnedByLocalClient() const
 	return false;
 }
 
+void Player::UpdateSmoothMovement()
+{
+    if (!isMovingSmooth)
+        return;
+
+    // Acumula movimento parcial
+    partialX += walkPath.x * PIXEL_MOVE_SPEED;
+    partialY += walkPath.y * PIXEL_MOVE_SPEED;
+
+    // Aplica movimento quando acumular 1 pixel ou mais
+    int deltaX = static_cast<int>(partialX);
+    int deltaY = static_cast<int>(partialY);
+
+    if (deltaX != 0 || deltaY != 0) {
+        // Atualiza posição do jogador
+        position.x += deltaX;
+        position.y += deltaY;
+
+        // Remove a parte aplicada do acumulador
+        partialX -= deltaX;
+        partialY -= deltaY;
+
+        // Verifica se chegou ao destino
+        if (std::abs(position.x - destinationTile.x * TILE_WIDTH) < PIXEL_MOVE_SPEED &&
+            std::abs(position.y - destinationTile.y * TILE_HEIGHT) < PIXEL_MOVE_SPEED) {
+            isMovingSmooth = false;
+            position.x = destinationTile.x * TILE_WIDTH;
+            position.y = destinationTile.y * TILE_HEIGHT;
+        }
+    }
+}
+
 Player *PlayerAtPosition(Point position, bool ignoreMovingPlayers /*= false*/)
 {
 	if (!InDungeonBounds(position))
