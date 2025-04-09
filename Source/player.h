@@ -218,23 +218,19 @@ struct SpellCastInfo {
 };
 
 struct Player {
-private:
-    static constexpr float PIXEL_MOVE_SPEED = 2.5f; // pixels por frame
-    float partialX = 0.0f;
-    float partialY = 0.0f;
-    bool isMovingSmooth = false;
-
 	Player() = default;
 	Player(Player &&) noexcept = default;
 	Player &operator=(Player &&) noexcept = default;
 
 	char _pName[PlayerNameLength];
+	Item InvBody[NUM_INVLOC];
+	Item InvList[InventoryGridCells];
+	Item SpdList[MaxBeltItems];
+	Item HoldItem;
 
 	int lightId;
 
-	// Remove redundant plractive declaration
-	// bool plractive;  // This line should be removed
-
+	int _pNumInv;
 	int _pStrength;
 	int _pBaseStr;
 	int _pMagic;
@@ -271,6 +267,7 @@ private:
 	uint32_t _pExperience;
 	PLR_MODE _pmode;
 	int8_t walkpath[MaxPathLengthPlayer];
+	bool plractive;
 	action_id destAction;
 	int destParam1;
 	int destParam2;
@@ -305,6 +302,7 @@ private:
 	int8_t _pHFrames;
 	int8_t _pDFrames;
 	int8_t _pBFrames;
+	int8_t InvGrid[InventoryGridCells];
 
 	uint8_t plrlevel;
 	bool plrIsOnSetLevel;
@@ -316,18 +314,6 @@ private:
 	uint8_t _pLevel = 1; // Use get/setCharacterLevel to ensure this attribute stays within the accepted range
 
 public:
-	// Make inventory items accessible to iterators
-	Item InvBody[NUM_INVLOC];
-	Item InvList[InventoryGridCells];
-	Item SpdList[MaxBeltItems];
-	Item HoldItem;
-	int _pNumInv;
-	int8_t InvGrid[InventoryGridCells];
-
-	// Friend declaration for inventory iterators
-	friend class PlayerItemsRange;
-	friend class InventoryAndBeltPlayerItemsRange;
-
 	uint8_t _pgfxnum; // Bitmask indicating what variant of the sprite the player is using. The 3 lower bits define weapon (PlayerWeaponGraphic) and the higher bits define armour (starting with PlayerArmorGraphic)
 	int8_t _pISplLvlAdd;
 	/** @brief Specifies whether players are in non-PvP mode. */
@@ -837,11 +823,6 @@ public:
 	{
 		return getCharacterLevel() >= getMaxCharacterLevel();
 	}
-
-	void UpdateSmoothMovement();
-    bool IsMovingSmooth() const { return isMovingSmooth; }
-
-	[[nodiscard]] bool isPlayerActive() const { return plractive; }
 
 private:
 	void _addExperience(uint32_t experience, int levelDelta);
