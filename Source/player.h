@@ -229,14 +229,9 @@ private:
 	Player &operator=(Player &&) noexcept = default;
 
 	char _pName[PlayerNameLength];
-	Item InvBody[NUM_INVLOC];
-	Item InvList[InventoryGridCells];
-	Item SpdList[MaxBeltItems];
-	Item HoldItem;
 
 	int lightId;
 
-	int _pNumInv;
 	int _pStrength;
 	int _pBaseStr;
 	int _pMagic;
@@ -308,7 +303,6 @@ private:
 	int8_t _pHFrames;
 	int8_t _pDFrames;
 	int8_t _pBFrames;
-	int8_t InvGrid[InventoryGridCells];
 
 	uint8_t plrlevel;
 	bool plrIsOnSetLevel;
@@ -320,6 +314,18 @@ private:
 	uint8_t _pLevel = 1; // Use get/setCharacterLevel to ensure this attribute stays within the accepted range
 
 public:
+	// Make inventory items accessible to iterators
+	Item InvBody[NUM_INVLOC];
+	Item InvList[InventoryGridCells];
+	Item SpdList[MaxBeltItems];
+	Item HoldItem;
+	int _pNumInv;
+	int8_t InvGrid[InventoryGridCells];
+
+	// Friend declaration for inventory iterators
+	friend class PlayerItemsRange;
+	friend class InventoryAndBeltPlayerItemsRange;
+
 	uint8_t _pgfxnum; // Bitmask indicating what variant of the sprite the player is using. The 3 lower bits define weapon (PlayerWeaponGraphic) and the higher bits define armour (starting with PlayerArmorGraphic)
 	int8_t _pISplLvlAdd;
 	/** @brief Specifies whether players are in non-PvP mode. */
