@@ -232,6 +232,8 @@ private:
 
 	int lightId;
 
+	bool plractive;
+
 	int _pStrength;
 	int _pBaseStr;
 	int _pMagic;
@@ -838,6 +840,8 @@ public:
 
 	void UpdateSmoothMovement();
     bool IsMovingSmooth() const { return isMovingSmooth; }
+
+	[[nodiscard]] bool isPlayerActive() const { return plractive; }
 
 private:
 	void _addExperience(uint32_t experience, int levelDelta);
