@@ -232,7 +232,8 @@ private:
 
 	int lightId;
 
-	bool plractive;
+	// Remove redundant plractive declaration
+	// bool plractive;  // This line should be removed
 
 	int _pStrength;
 	int _pBaseStr;
