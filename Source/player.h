@@ -908,12 +908,6 @@ public:
 
 		return (type == leftHandItem._itype && leftHandItem._iStatFlag) || (type == rightHandItem._itype && rightHandItem._iStatFlag);
 	}
-
-    /** @brief Returns the precise position of the player in the current level. */
-    [[nodiscard]] Point GetPrecisePosition() const;
-
-    /** @brief Sets the precise position of the player in the current level. */
-    void SetPrecisePosition(Point position);
 };
 
 extern DVL_API_FOR_TEST uint8_t MyPlayerId;
