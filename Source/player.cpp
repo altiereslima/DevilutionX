@@ -3434,4 +3434,52 @@ bool TestPlayerDoGotHit(Player &player)
 }
 #endif
 
+void Player::Move(AxisDirection direction)
+{
+    if (!isMoving) {
+        pixelX = position.tile.x * TILE_WIDTH;  // Corrigido para usar position.tile
+        pixelY = position.tile.y * TILE_HEIGHT; // Corrigido para usar position.tile
+        isMoving = true;
+    }
+
+    int targetX = pixelX;
+    int targetY = pixelY;
+
+    switch (direction) {
+        case AxisDirection::North:
+            targetY -= PLAYER_MOVEMENT_SPEED;
+            break;
+        case AxisDirection::South:
+            targetY += PLAYER_MOVEMENT_SPEED;
+            break;
+        case AxisDirection::West:
+            targetX -= PLAYER_MOVEMENT_SPEED;
+            break;
+        case AxisDirection::East:
+            targetX += PLAYER_MOVEMENT_SPEED;
+            break;
+    }
+
+    // Verifica colisões em nível de pixel
+    if (!CheckCollision(targetX, targetY)) {
+        pixelX = targetX;
+        pixelY = targetY;
+        // Atualiza a posição do tile quando cruzar a fronteira
+        position.tile.x = pixelX / TILE_WIDTH;
+        position.tile.y = pixelY / TILE_HEIGHT;
+        position.future = position.tile; // Mantém a posição futura atualizada
+    }
+}
+
+bool Player::CheckCollision(int px, int py)
+{
+    // Converte pixels para coordenadas de tile
+    int tileX = px / TILE_WIDTH;
+    int tileY = py / TILE_HEIGHT;
+    
+    Point testPosition { tileX, tileY };
+    // Usa a função existente IsTileWalkable e PosOkPlayer para verificar colisões
+    return !IsTileWalkable(testPosition) || !PosOkPlayer(*this, testPosition);
+}
+
 } // namespace devilution
