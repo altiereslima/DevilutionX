@@ -217,13 +217,6 @@ struct SpellCastInfo {
 	int spellLevel;
 };
 
-enum class AxisDirection {
-    North,
-    South,
-    East,
-    West
-};
-
 struct Player {
 	Player() = default;
 	Player(Player &&) noexcept = default;
@@ -915,13 +908,6 @@ public:
 
 		return (type == leftHandItem._itype && leftHandItem._iStatFlag) || (type == rightHandItem._itype && rightHandItem._iStatFlag);
 	}
-
-	int pixelX;        // Posição X precisa em pixels
-	int pixelY;        // Posição Y precisa em pixels
-	bool isMoving;     // Flag para controle de movimento
-
-	void Move(AxisDirection direction);
-	bool CheckCollision(int px, int py);
 };
 
 extern DVL_API_FOR_TEST uint8_t MyPlayerId;
