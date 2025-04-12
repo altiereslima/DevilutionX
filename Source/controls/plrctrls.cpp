@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <list>
 
+#include "player.h" // Keep this include near the top
+
 #ifdef USE_SDL1
 #include "utils/sdl2_to_1_2_backports.h"
 #endif
@@ -43,7 +45,6 @@
 #include "utils/is_of.hpp"
 #include "utils/log.hpp"
 #include "utils/str_cat.hpp"
-#include "player.h" // Add this include for PM_WALK
 
 namespace devilution {
 
