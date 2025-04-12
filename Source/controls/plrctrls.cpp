@@ -43,6 +43,7 @@
 #include "utils/is_of.hpp"
 #include "utils/log.hpp"
 #include "utils/str_cat.hpp"
+#include "player.h" // Add this include for PM_WALK
 
 namespace devilution {
 
