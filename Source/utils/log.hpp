@@ -46,19 +46,10 @@ namespace detail {
 template <typename... Args>
 std::string format(std::string_view fmt, Args &&...args)
 {
-	FMT_TRY
-	{
-		return fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
-	}
-	FMT_CATCH(const fmt::format_error &e)
-	{
-#if FMT_EXCEPTIONS
-		// e.what() is undefined if exceptions are disabled, so we wrap the whole block
-		// with an `FMT_EXCEPTIONS` check.
-		std::string error = StrCat("Format error, fmt: ", fmt, " error: ", e.what());
-		SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, "%s", error.c_str());
-		app_fatal(error);
-#endif
+	try {
+		return fmt::format(fmt, std::forward<Args>(args)...);
+	} FMT_CATCH(const fmt::format_error &e) {
+		return std::string(e.what()); // Return error message instead of nothing
 	}
 }
 
