@@ -2044,22 +2044,24 @@ void plrctrls_after_game_logic()
 	UpdatePixelMovement();
 	
 	if (isPixelMoving) {
-		// Convert pixel offset to world position
-		int newX = MyPlayer->position.tile.x * TILE_WIDTH + MyPlayer->position.offset.x;
-		int newY = MyPlayer->position.tile.y * TILE_HEIGHT + MyPlayer->position.offset.y;
+		// Convert pixel offset to world position including existing offset
+		int newX = (MyPlayer->position.tile.x * TILE_WIDTH) + MyPlayer->position.offset.x;
+		int newY = (MyPlayer->position.tile.y * TILE_HEIGHT) + MyPlayer->position.offset.y;
 		
 		newX += static_cast<int>(pixelMoveX);
 		newY += static_cast<int>(pixelMoveY);
 		
 		// Update tile and offset position
 		Point tile = { newX / TILE_WIDTH, newY / TILE_HEIGHT };
-		Point offset = { newX % TILE_WIDTH, newY % TILE_HEIGHT };
+		Point pixelOffset = { newX % TILE_WIDTH, newY % TILE_HEIGHT };
 		
 		// Check if movement is valid
 		if (PosOkPlayer(*MyPlayer, tile)) {
 			MyPlayer->position.tile = tile;
-			MyPlayer->position.offset = offset;
-			MyPlayer->_pmode = PM_WALK;
+			MyPlayer->position.offset = pixelOffset;
+			MyPlayer->_pmode = PM_STAND;
+			if (pixelOffset.x != 0 || pixelOffset.y != 0)
+				MyPlayer->_pmode = PM_WALK;
 		} else {
 			ResetPixelMovement();
 		}
