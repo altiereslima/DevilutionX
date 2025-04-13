@@ -29,31 +29,6 @@ struct ActorPosition {
 	DisplacementOf<int16_t> GetWalkingVelocityShifted4(Direction dir, const AnimationInfo &animInfo) const;
 	/** @brief Returns Pixel velocity while walking. */
 	DisplacementOf<int16_t> GetWalkingVelocityShifted8(Direction dir, const AnimationInfo &animInfo) const;
-
-	// Add sub-tile position (values 0-255 represent position within a tile)
-	uint8_t subX = 0;
-	uint8_t subY = 0;
-
-	Point GetSubTilePosition() const 
-	{
-		return { tile.x * 256 + subX, tile.y * 256 + subY };
-	}
-
-	void UpdateSubTilePosition(int dx, int dy)
-	{
-		subX = static_cast<uint8_t>(subX + dx);
-		subY = static_cast<uint8_t>(subY + dy); 
-		
-		// Update tile position if we cross tile boundaries
-		if(subX >= 255) {
-			tile.x++;
-			subX = 0;
-		}
-		if(subY >= 255) {
-			tile.y++;
-			subY = 0;
-		}
-	}
 };
 
 } // namespace devilution
