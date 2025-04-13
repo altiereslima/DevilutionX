@@ -51,7 +51,6 @@
 #include "utils/log.hpp"
 #include "utils/str_cat.hpp"
 #include "utils/utf8.hpp"
-#include "engine/movement.hpp"
 
 namespace devilution {
 
@@ -3426,19 +3425,6 @@ void PlayDungMsgs()
 	} else {
 		sfxdelay = 0;
 	}
-}
-
-void Player::Move(int targetX, int targetY)
-{
-    if (SmoothMovement::IsAtDestination(position.x, position.y, targetX, targetY)) {
-        return;
-    }
-
-    uint32_t ticks = SDL_GetTicks() - lastMoveTime;
-    float steps = SmoothMovement::GetPixelSteps(ticks);
-    
-    SmoothMovement::GetNextPosition(position.x, position.y, targetX, targetY, steps);
-    lastMoveTime = SDL_GetTicks();
 }
 
 #ifdef BUILD_TESTING
