@@ -51,6 +51,7 @@
 #include "utils/log.hpp"
 #include "utils/str_cat.hpp"
 #include "utils/utf8.hpp"
+#include "levels/dun_tile.hpp"
 
 namespace devilution {
 
@@ -3434,8 +3435,6 @@ bool TestPlayerDoGotHit(Player &player)
 }
 #endif
 
-constexpr int TILE_WIDTH = 32;  // Largura do tile em pixels
-constexpr int TILE_HEIGHT = 32; // Altura do tile em pixels
 constexpr int MOVEMENT_SPEED = 2; // Velocidade do movimento em pixels por frame
 
 void Player::ProcessMovement()
