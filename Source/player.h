@@ -917,6 +917,8 @@ public:
 	}
 
 	PlayerMovement movement;
+
+	void ProcessMovement();
 };
 
 extern DVL_API_FOR_TEST uint8_t MyPlayerId;
