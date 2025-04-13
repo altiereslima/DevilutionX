@@ -330,6 +330,14 @@ find_package(Threads REQUIRED)
 # Dependencies must be included after Platforms.
 include(Dependencies)
 
+FetchContent_Declare(
+    bzip2
+    URL "https://www.sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz"
+    URL_HASH SHA256=ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269
+    TIMEOUT 300
+    DOWNLOAD_NO_EXTRACT TRUE
+)
+
 add_subdirectory(Source)
 
 set(BIN_TARGET devilutionx)
