@@ -379,6 +379,10 @@ msgstr "Arquivo de Jogo Salvo Existente"
 msgid "Load Game"
 msgstr "Carregar Jogo"
 
+#: Source/DiabloUI/hero/selhero.cpp:197 Source/gamemenu.cpp:49
+msgid "Exit to Main Menu"
+msgstr "Sair para o Menu Principal"
+
 #: Source/DiabloUI/hero/selhero.cpp:198 Source/gamemenu.cpp:44
 #: Source/gamemenu.cpp:55 Source/multi.cpp:801
 msgid "New Game"

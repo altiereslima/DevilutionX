@@ -1601,4 +1601,10 @@ std::optional<Resampler> ResamplerFromString(std::string_view resampler)
 	return std::nullopt;
 }
 
+GamepadLayout DefaultGamepadLayout = GamepadLayout::Xbox;
+Padmapper = GamepadPadMapperOptions {
+	GamepadPreset::Classic,
+	DefaultGamepadLayout,
+};
+
 } // namespace devilution
