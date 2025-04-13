@@ -217,6 +217,13 @@ struct SpellCastInfo {
 	int spellLevel;
 };
 
+struct PlayerMovement {
+    int pixelX;
+    int pixelY;
+    bool isMoving;
+    int movementSpeed;
+};
+
 struct Player {
 	Player() = default;
 	Player(Player &&) noexcept = default;
@@ -908,6 +915,8 @@ public:
 
 		return (type == leftHandItem._itype && leftHandItem._iStatFlag) || (type == rightHandItem._itype && rightHandItem._iStatFlag);
 	}
+
+	PlayerMovement movement;
 };
 
 extern DVL_API_FOR_TEST uint8_t MyPlayerId;

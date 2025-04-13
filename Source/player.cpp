@@ -3434,4 +3434,34 @@ bool TestPlayerDoGotHit(Player &player)
 }
 #endif
 
+void Player::ProcessMovement()
+{
+    // ...existing code...
+    const int PIXELS_PER_TILE = 32;
+    const int MOVEMENT_SPEED = 3; // pixels per frame
+
+    if (IsAnyOf(cmd.dir, WalkDirection::West, WalkDirection::East)) {
+        int direction = (cmd.dir == WalkDirection::West) ? -1 : 1;
+        movement.pixelX += direction * MOVEMENT_SPEED;
+        
+        // Snap to tile when reaching boundary
+        if (abs(movement.pixelX) >= PIXELS_PER_TILE) {
+            position.tile.x += direction;
+            movement.pixelX = 0;
+        }
+    }
+
+    if (IsAnyOf(cmd.dir, WalkDirection::North, WalkDirection::South)) {
+        int direction = (cmd.dir == WalkDirection::North) ? -1 : 1;
+        movement.pixelY += direction * MOVEMENT_SPEED;
+        
+        // Snap to tile when reaching boundary
+        if (abs(movement.pixelY) >= PIXELS_PER_TILE) {
+            position.tile.y += direction;
+            movement.pixelY = 0;
+        }
+    }
+    // ...existing code...
+}
+
 } // namespace devilution
