@@ -227,7 +227,7 @@ void LoadOptions()
 	}
 
 	ini->getUtf8Buf("Controller", "Mapping", options.Controller.szMapping, sizeof(options.Controller.szMapping));
-	options.Controller.fDeadzone = ini->getFloat("Controller", "deadzone", 0.07F);
+	options.Controller.fDeadzone = ini->getFloat("Controller", "deadzone", 0.15F);
 #ifdef __vita__
 	options.Controller.bRearTouch = ini->getBool("Controller", "Enable Rear Touchpad", true);
 #endif
@@ -1600,11 +1600,5 @@ std::optional<Resampler> ResamplerFromString(std::string_view resampler)
 #endif
 	return std::nullopt;
 }
-
-GamepadLayout DefaultGamepadLayout = GamepadLayout::Xbox;
-Padmapper = GamepadPadMapperOptions {
-	GamepadPreset::Classic,
-	DefaultGamepadLayout,
-};
 
 } // namespace devilution
