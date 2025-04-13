@@ -3434,32 +3434,77 @@ bool TestPlayerDoGotHit(Player &player)
 }
 #endif
 
+constexpr int TILE_WIDTH = 32;  // Largura do tile em pixels
+constexpr int TILE_HEIGHT = 32; // Altura do tile em pixels
+constexpr int MOVEMENT_SPEED = 2; // Velocidade do movimento em pixels por frame
+
 void Player::ProcessMovement()
 {
-	const int PIXELS_PER_TILE = 32;
-	const int MOVEMENT_SPEED = 3; // pixels per frame
+    if (!movement.isMoving)
+        return;
 
-	if (IsAnyOf(_pdir, Direction::West, Direction::East)) {
-		int direction = (_pdir == Direction::West) ? -1 : 1;
-		movement.pixelX += direction * MOVEMENT_SPEED;
-		
-		// Snap to tile when reaching boundary
-		if (std::abs(movement.pixelX) >= PIXELS_PER_TILE) {
-			position.tile.x += direction;
-			movement.pixelX = 0;
-		}
-	}
+    // Atualiza a posição em pixels baseado na direção
+    switch (movement.moveDirection) {
+    case Direction::North:
+        movement.pixelY -= movement.movementSpeed;
+        break;
+    case Direction::South:
+        movement.pixelY += movement.movementSpeed;
+        break;
+    case Direction::East:
+        movement.pixelX += movement.movementSpeed;
+        break;
+    case Direction::West:
+        movement.pixelX -= movement.movementSpeed;
+        break;
+    case Direction::NorthEast:
+        movement.pixelX += movement.movementSpeed;
+        movement.pixelY -= movement.movementSpeed;
+        break;
+    case Direction::NorthWest:
+        movement.pixelX -= movement.movementSpeed;
+        movement.pixelY -= movement.movementSpeed;
+        break;
+    case Direction::SouthEast:
+        movement.pixelX += movement.movementSpeed;
+        movement.pixelY += movement.movementSpeed;
+        break;
+    case Direction::SouthWest:
+        movement.pixelX -= movement.movementSpeed;
+        movement.pixelY += movement.movementSpeed;
+        break;
+    default:
+        break;
+    }
 
-	if (IsAnyOf(_pdir, Direction::North, Direction::South)) {
-		int direction = (_pdir == Direction::North) ? -1 : 1;
-		movement.pixelY += direction * MOVEMENT_SPEED;
-		
-		// Snap to tile when reaching boundary
-		if (std::abs(movement.pixelY) >= PIXELS_PER_TILE) {
-			position.tile.y += direction;
-			movement.pixelY = 0;
-		}
-	}
+    // Verifica se chegou ao próximo tile
+    bool reachedNextTile = false;
+    Point currentTile = position.tile;
+    
+    if (std::abs(movement.pixelX) >= TILE_WIDTH) {
+        currentTile.x += movement.pixelX > 0 ? 1 : -1;
+        movement.pixelX = 0;
+        reachedNextTile = true;
+    }
+    
+    if (std::abs(movement.pixelY) >= TILE_HEIGHT) {
+        currentTile.y += movement.pixelY > 0 ? 1 : -1;
+        movement.pixelY = 0;
+        reachedNextTile = true;
+    }
+
+    // Atualiza a posição do player se alcançou o próximo tile
+    if (reachedNextTile) {
+        if (PosOkPlayer(*this, currentTile)) {
+            position.tile = currentTile;
+            movement.isMoving = false;
+        } else {
+            // Se não pode mover para o próximo tile, para o movimento
+            movement.pixelX = 0;
+            movement.pixelY = 0;
+            movement.isMoving = false;
+        }
+    }
 }
 
 } // namespace devilution

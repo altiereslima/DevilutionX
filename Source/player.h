@@ -218,10 +218,12 @@ struct SpellCastInfo {
 };
 
 struct PlayerMovement {
-    int pixelX;
-    int pixelY;
-    bool isMoving;
-    int movementSpeed;
+    int pixelX;      // Current pixel position X
+    int pixelY;      // Current pixel position Y
+    bool isMoving;   // Is player currently moving
+    int movementSpeed; // Pixels per frame
+    Direction moveDirection; // Current movement direction
+    bool smoothMovement; // Enable PS1-style smooth movement
 };
 
 struct Player {
