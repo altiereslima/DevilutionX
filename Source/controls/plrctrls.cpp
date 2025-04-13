@@ -1624,20 +1624,8 @@ void Movement(Player &player)
 		return;
 
 	if (GetLeftStickOrDPadGameUIHandler() == nullptr) {
-		// Get movement direction from input
-		AxisDirection moveDir = GetMoveDirection();
-		if (moveDir.x != AxisDirectionX_NONE || moveDir.y != AxisDirectionY_NONE) {
-			Direction dir = FaceDir[static_cast<std::size_t>(moveDir.x)][static_cast<std::size_t>(moveDir.y)];
-			// Start smooth movement when initiating movement
-			if (!SmoothMovement::isMoving) {
-				SmoothMovement::StartMovement(dir);
-			}
-		}
-		WalkInDir(player, moveDir);
+		WalkInDir(player, GetMoveDirection());
 	}
-	
-	// Update smooth movement
-	SmoothMovement::Update(GetFrameTime());
 }
 
 struct RightStickAccumulator {
