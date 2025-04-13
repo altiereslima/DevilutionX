@@ -124,7 +124,43 @@ void HandleWalkMode(Player &player, Direction dir)
 
 	player._pdir = dir;
 
-	// The player's tile position after finishing this movement action
+	// Calculate sub-tile movement based on direction
+	int dx = 0, dy = 0;
+	switch(dir) {
+		case Direction::South:
+			dy = 2;
+			break;
+		case Direction::SouthWest:
+			dx = -2;
+			dy = 2;
+			break;
+		case Direction::West:
+			dx = -2;
+			break;
+		case Direction::NorthWest:
+			dx = -2;
+			dy = -2;
+			break;
+		case Direction::North:
+			dy = -2;
+			break;
+		case Direction::NorthEast:
+			dx = 2;
+			dy = -2;
+			break;
+		case Direction::East:
+			dx = 2;
+			break;
+		case Direction::SouthEast:
+			dx = 2;
+			dy = 2;
+			break;
+	}
+
+	// Update sub-tile position
+	player.position.UpdateSubTilePosition(dx, dy);
+
+	// The future position is now the next full tile in movement direction
 	player.position.future = player.position.tile + dirModeParams.dir;
 
 	WalkInDirection(player, dirModeParams);
@@ -408,11 +444,12 @@ bool DoWalk(Player &player)
 		return false;
 	}
 
-	// We reached the new tile -> update the player's tile position
-	dPlayer[player.position.tile.x][player.position.tile.y] = 0;
-	player.position.tile = player.position.temp;
-	// dPlayer is set here for backwards compatibility; without it, the player would be invisible if loaded from a vanilla save.
-	player.occupyTile(player.position.tile, false);
+	// Only update tile position when sub-tile position crosses tile boundary
+	if(player.position.subX == 0 && player.position.subY == 0) {
+		dPlayer[player.position.tile.x][player.position.tile.y] = 0;
+		player.position.tile = player.position.future;
+		player.occupyTile(player.position.tile, false);
+	}
 
 	// Update the coordinates for lighting and vision entries for the player
 	if (leveltype != DTYPE_TOWN) {
