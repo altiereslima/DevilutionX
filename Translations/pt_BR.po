@@ -144,23 +144,23 @@ msgstr "Arte do Manual"
 
 #: Source/DiabloUI/credits_lines.cpp:112
 msgid "Provisional Director of QA (Lead Tester)"
-msgstr "Diretor Provisório de CQ (Testador Líder)"
+msgstr "Diretor Provisório de Controle de Qualidade (Testador Líder)"
 
 #: Source/DiabloUI/credits_lines.cpp:115
 msgid "QA Assault Team (Testers)"
-msgstr "Equipe de Assalto de CQ (Testadores)"
+msgstr "Equipe de Assalto de Controle de Qualidade (Testadores)"
 
 #: Source/DiabloUI/credits_lines.cpp:120
 msgid "QA Special Ops Team (Compatibility Testers)"
-msgstr "Forças Especiais de CQ (Testadores de Compatibilidade)"
+msgstr "Forças Especiais de Controle de Qualidade (Testadores de Compatibilidade)"
 
 #: Source/DiabloUI/credits_lines.cpp:123
 msgid "QA Artillery Support (Additional Testers) "
-msgstr "Suporte de Artilharia de CQ (Testadores Adicionais)"
+msgstr "Suporte de Artilharia de Controle de Qualidade (Testadores Adicionais)"
 
 #: Source/DiabloUI/credits_lines.cpp:127
 msgid "QA Counterintelligence"
-msgstr "Contrainteligência de CQ"
+msgstr "Contrainteligência de Controle de Qualidade"
 
 #. TRANSLATORS: A group of people
 #: Source/DiabloUI/credits_lines.cpp:130
