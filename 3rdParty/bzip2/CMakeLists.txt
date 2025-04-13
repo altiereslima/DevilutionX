@@ -4,7 +4,7 @@ include(FetchContent)
 FetchContent_Declare(
     bzip2
     URL https://github.com/libarchive/bzip2/archive/refs/tags/bzip2-1.0.8.tar.gz
-    URL_HASH SHA256=952acb45e9b05be03b56241c6924f8de58e4af76f862e56af3df55993b419b39
+    URL_HASH SHA256=db106b740252669664fd8f3a1c69fe7f689d5cd4b132f82ba82b9afba27627df
 )
 FetchContent_MakeAvailable_ExcludeFromAll(bzip2)
 
