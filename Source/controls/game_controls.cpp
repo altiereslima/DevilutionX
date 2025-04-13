@@ -308,21 +308,21 @@ void PressControllerButton(ControllerButton button)
 
 ControllerButton TranslateTo(GamepadLayout layout, ControllerButton button)
 {
-	if (layout == GamepadLayout::Nintendo) {
-		switch (button) {
-		case ControllerButton_BUTTON_B:
-			return ControllerButton_BUTTON_A;
-		case ControllerButton_BUTTON_A:
-			return ControllerButton_BUTTON_B;
-		case ControllerButton_BUTTON_Y:
-			return ControllerButton_BUTTON_X;
-		case ControllerButton_BUTTON_X:
-			return ControllerButton_BUTTON_Y;
-		default:
-			return button;
-		}
+	if (layout != GamepadLayout::Nintendo)
+		return button;
+
+	switch (button) {
+	case ControllerButton_BUTTON_A:
+		return ControllerButton_BUTTON_B;
+	case ControllerButton_BUTTON_B:
+		return ControllerButton_BUTTON_A;
+	case ControllerButton_BUTTON_X:
+		return ControllerButton_BUTTON_Y;
+	case ControllerButton_BUTTON_Y:
+		return ControllerButton_BUTTON_X;
+	default:
+		return button;
 	}
-	return button;
 }
 
 bool SkipsMovie(ControllerButtonEvent ctrlEvent)

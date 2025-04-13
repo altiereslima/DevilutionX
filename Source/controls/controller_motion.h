@@ -21,11 +21,6 @@ extern float leftStickX, leftStickY, rightStickX, rightStickY;
 // Whether stick positions have been updated and need rescaling.
 extern bool leftStickNeedsScaling, rightStickNeedsScaling;
 
-// Pixel movement state
-extern float pixelMoveX;
-extern float pixelMoveY;
-extern bool isPixelMoving;
-
 // Updates motion state for mouse and joystick sticks.
 void ProcessControllerMotion(const SDL_Event &event);
 
@@ -37,9 +32,5 @@ AxisDirection GetLeftStickOrDpadDirection(bool usePadmapper);
 
 // Simulates right-stick movement based on input from padmapper mouse movement actions.
 void SimulateRightStickWithPadmapper(ControllerButtonEvent ctrlEvent);
-
-// Get current pixel movement values 
-void UpdatePixelMovement();
-void ResetPixelMovement();
 
 } // namespace devilution

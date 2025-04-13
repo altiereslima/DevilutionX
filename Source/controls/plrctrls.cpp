@@ -5,8 +5,6 @@
 #include <cstdint>
 #include <list>
 
-#include "player.h" // Keep this include near the top
-
 #ifdef USE_SDL1
 #include "utils/sdl2_to_1_2_backports.h"
 #endif
@@ -2040,35 +2038,6 @@ void plrctrls_every_frame()
 
 void plrctrls_after_game_logic()
 {
-	if (gmenu_is_active() || MyPlayer == nullptr || MyPlayer->_pmode != PM_STAND)
-		return;
-
-	UpdatePixelMovement();
-	
-	if (isPixelMoving) {
-		// Convert pixel offset to world position including existing offset
-		int newX = (MyPlayer->position.tile.x * TILE_WIDTH) + MyPlayer->position.offset.x;
-		int newY = (MyPlayer->position.tile.y * TILE_HEIGHT) + MyPlayer->position.offset.y;
-		
-		newX += static_cast<int>(pixelMoveX);
-		newY += static_cast<int>(pixelMoveY);
-		
-		// Update tile and offset position
-		Point tile = { newX / TILE_WIDTH, newY / TILE_HEIGHT };
-		Point pixelOffset = { newX % TILE_WIDTH, newY % TILE_HEIGHT };
-		
-		// Check if movement is valid
-		if (PosOkPlayer(*MyPlayer, tile)) {
-			MyPlayer->position.tile = tile;
-			MyPlayer->position.offset = pixelOffset;
-			MyPlayer->_pmode = PM_STAND;
-			if (pixelOffset.x != 0 || pixelOffset.y != 0)
-				MyPlayer->_pmode = PM_WALK;
-		} else {
-			ResetPixelMovement();
-		}
-	}
-
 	Movement(*MyPlayer);
 }
 

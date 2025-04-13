@@ -12,7 +12,6 @@ struct ActorPosition {
 	WorldTilePosition tile;
 	/** Future tile position. Set at start of walking animation. */
 	WorldTilePosition future;
-	Point offset;     // Pixel offset within the current tile
 	/** Tile position of player. Set via network on player input. */
 	WorldTilePosition last;
 	/** Most recent position in dPlayer. */
