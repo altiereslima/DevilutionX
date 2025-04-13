@@ -5,7 +5,9 @@
 
 namespace devilution {
 
-constexpr int TILE_WIDTH = 64;
+/** @brief Width of a tile in pixels */
+constexpr int TILE_WIDTH = 32;
+/** @brief Height of a tile in pixels */
 constexpr int TILE_HEIGHT = 32;
 
 /** @brief Index indicating that there is no tile at this location */
