@@ -76,63 +76,10 @@ void UpdatePlayerLightOffset(Player &player)
 	ChangeLightOffset(player.lightId, offset.screenToLight());
 }
 
-void WalkInDirection(Player &player, const DirectionSettings &walkParams) 
+void WalkInDirection(Player &player, const DirectionSettings &walkParams)
 {
-    // Pixel increment per game tick (2-3 pixels like PS1)
-    constexpr int PixelsPerStep = 2;
-    
-    Point pixelOffset;
-    switch (walkParams.dir) {
-        case Direction::South:
-            pixelOffset = { 0, PixelsPerStep };
-            break;
-        case Direction::SouthWest:
-            pixelOffset = { -PixelsPerStep, PixelsPerStep };
-            break;
-        case Direction::West:
-            pixelOffset = { -PixelsPerStep, 0 };
-            break;
-        case Direction::NorthWest:
-            pixelOffset = { -PixelsPerStep, -PixelsPerStep };
-            break;
-        case Direction::North:
-            pixelOffset = { 0, -PixelsPerStep };
-            break;
-        case Direction::NorthEast:
-            pixelOffset = { PixelsPerStep, -PixelsPerStep };
-            break;
-        case Direction::East:
-            pixelOffset = { PixelsPerStep, 0 };
-            break;
-        case Direction::SouthEast:
-            pixelOffset = { PixelsPerStep, PixelsPerStep };
-            break;
-    }
-
-    // Track sub-pixel position (32 pixels = 1 tile)
-    player.position.subX += pixelOffset.x;
-    player.position.subY += pixelOffset.y;
-
-    // Update actual tile position when moving past tile boundaries
-    const int TileSize = 32;
-    if (player.position.subX >= TileSize) {
-        player.position.tile.x++;
-        player.position.subX = 0;
-    } else if (player.position.subX <= -TileSize) {
-        player.position.tile.x--;
-        player.position.subX = 0;
-    }
-    
-    if (player.position.subY >= TileSize) {
-        player.position.tile.y++;
-        player.position.subY = 0;
-    } else if (player.position.subY <= -TileSize) {
-        player.position.tile.y--;
-        player.position.subY = 0;
-    }
-
-    player.occupyTile(player.position.future, true);
-    player.position.temp = player.position.tile + walkParams.dir;
+	player.occupyTile(player.position.future, true);
+	player.position.temp = player.position.tile + walkParams.dir;
 }
 
 constexpr std::array<const DirectionSettings, 8> WalkSettings { {
@@ -455,34 +402,35 @@ bool DoWalk(Player &player)
 		}
 	}
 
-	// Only clear tile occupation when we've actually moved to a new tile
-    if (player.position.tile != player.position.future && 
-        player.position.subX == 0 && player.position.subY == 0) {
-        dPlayer[player.position.tile.x][player.position.tile.y] = 0;
-    }
+	if (!player.AnimInfo.isLastFrame()) {
+		// We didn't reach new tile so update player's "sub-tile" position
+		UpdatePlayerLightOffset(player);
+		return false;
+	}
 
-    // Update lighting and vision based on sub-pixel position
-    if (leveltype != DTYPE_TOWN) {
-        Point lightOffset = {
-            player.position.subX / 2,
-            player.position.subY / 2
-        };
-        ChangeLightOffset(player.lightId, { lightOffset.x, lightOffset.y });
-    }
+	// We reached the new tile -> update the player's tile position
+	dPlayer[player.position.tile.x][player.position.tile.y] = 0;
+	player.position.tile = player.position.temp;
+	// dPlayer is set here for backwards compatibility; without it, the player would be invisible if loaded from a vanilla save.
+	player.occupyTile(player.position.tile, false);
 
-    // Stop walking when we reach the target tile
-    if (player.position.tile == player.position.future &&
-        player.position.subX == 0 && player.position.subY == 0) {
-        StartStand(player, player.tempDirection);
-        ClearStateVariables(player);
-        if (leveltype != DTYPE_TOWN) {
-            ChangeLightOffset(player.lightId, { 0, 0 });
-        }
-        AutoPickup(player);
-        return true;
-    }
+	// Update the coordinates for lighting and vision entries for the player
+	if (leveltype != DTYPE_TOWN) {
+		ChangeLightXY(player.lightId, player.position.tile);
+		ChangeVisionXY(player.getId(), player.position.tile);
+	}
 
-    return false;
+	StartStand(player, player.tempDirection);
+
+	ClearStateVariables(player);
+
+	// Reset the "sub-tile" position of the player's light entry to 0
+	if (leveltype != DTYPE_TOWN) {
+		ChangeLightOffset(player.lightId, { 0, 0 });
+	}
+
+	AutoPickup(player);
+	return true;
 }
 
 bool WeaponDecay(Player &player, int ii)
