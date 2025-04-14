@@ -70,18 +70,23 @@ enum direction_mode : uint8_t {
 };
 
 enum player_mode : uint8_t {
+    // Movement modes
     PM_STAND,
     PM_WALK_NORTHWARDS,
     PM_WALK_SOUTHWARDS,
     PM_WALK_SIDEWAYS,
+    
+    // Action modes
     PM_ATTACK,
     PM_RATTACK,
     PM_BLOCK,
     PM_GOTHIT,
     PM_DEATH,
     PM_SPELL,
+    
+    // Game state modes
     PM_NEWLVL,
-    PM_QUIT,
+    PM_QUIT
 };
 
 enum class PlayerAnimationMode : uint8_t {
