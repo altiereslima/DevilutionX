@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/point.hpp"
+#include "engine/size.hpp" // Include for TILE_WIDTH and TILE_HEIGHT
 
 namespace devilution {
 
@@ -13,20 +14,20 @@ struct ActorPosition {
         offset += velocity;
 
         // Handle offset overflow/underflow
-        while (offset.x >= TILE_WIDTH) {
-            offset.x -= TILE_WIDTH;
+        while (offset.x >= TileWidth) {
+            offset.x -= TileWidth;
             tile.x++;
         }
         while (offset.x < 0) {
-            offset.x += TILE_WIDTH;
+            offset.x += TileWidth;
             tile.x--;
         }
-        while (offset.y >= TILE_HEIGHT) {
-            offset.y -= TILE_HEIGHT;
+        while (offset.y >= TileHeight) {
+            offset.y -= TileHeight;
             tile.y++;
         }
         while (offset.y < 0) {
-            offset.y += TILE_HEIGHT;
+            offset.y += TileHeight;
             tile.y--;
         }
     }
