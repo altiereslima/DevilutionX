@@ -71,11 +71,28 @@ enum direction_mode : uint8_t {
 
 enum player_mode : uint8_t {
     PM_STAND,
-    PM_WALK,
+    PM_WALK_NORTHWARDS,
+    PM_WALK_SOUTHWARDS,
+    PM_WALK_SIDEWAYS,
     PM_ATTACK,
+    PM_RATTACK,
+    PM_BLOCK,
     PM_GOTHIT,
     PM_DEATH,
-    PM_SPELL
+    PM_SPELL,
+    PM_NEWLVL,
+    PM_QUIT,
+};
+
+enum class PlayerAnimationMode : uint8_t {
+    Stand = 0,
+    Attack,
+    GotHit,
+    Death,
+    Spell,
+    Walk,
+    Block,
+    // Add other animation modes as needed
 };
 
 constexpr int PixelMovementSpeed = 2;
@@ -126,21 +143,6 @@ enum class PlayerWeaponGraphic : uint8_t {
 	Mace,
 	MaceShield,
 	Staff,
-};
-
-enum PLR_MODE : uint8_t {
-	PM_STAND,
-	PM_WALK_NORTHWARDS,
-	PM_WALK_SOUTHWARDS,
-	PM_WALK_SIDEWAYS,
-	PM_ATTACK,
-	PM_RATTACK,
-	PM_BLOCK,
-	PM_GOTHIT,
-	PM_DEATH,
-	PM_SPELL,
-	PM_NEWLVL,
-	PM_QUIT,
 };
 
 enum action_id : int8_t {
