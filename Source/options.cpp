@@ -179,6 +179,22 @@ bool HardwareCursorDefault()
 }
 #endif
 
+template <typename T>
+T GetOptionValue(std::string_view category, std::string_view key, T defaultValue)
+{
+    if (!ini.has_value())
+        return defaultValue;
+    return ini->get<T>(category, key, defaultValue);
+}
+
+template <typename T>
+void SetOptionValue(std::string_view category, std::string_view key, T value)
+{
+    if (!ini.has_value())
+        return;
+    ini->set(category, key, value);
+}
+
 } // namespace
 
 Options &GetOptions()
@@ -783,6 +799,7 @@ std::vector<OptionEntryBase *> GraphicsOptions::GetEntries()
 GameplayOptions::GameplayOptions()
     : OptionCategoryBase("Game", N_("Gameplay"), N_("Gameplay Settings"))
     , tickRate("Speed", OptionEntryFlags::Invisible, "Speed", "Gameplay ticks per second.", 20)
+    , smoothMovement("SmoothMovement", OptionEntryFlags::None, N_("Smooth Movement"), N_("Enable continuous pixel movement instead of tile-based."), true)
     , runInTown("Run in Town", OptionEntryFlags::CantChangeInMultiPlayer, N_("Run in Town"), N_("Enable jogging/fast walking in town for Diablo and Hellfire. This option was introduced in the expansion."), false)
     , grabInput("Grab Input", OptionEntryFlags::None, N_("Grab Input"), N_("When enabled mouse is locked to the game window."), false)
     , pauseOnFocusLoss("Pause Game When Window Loses Focus", OptionEntryFlags::None, N_("Pause Game When Window Loses Focus"), N_("When enabled, the game will pause when focus is lost."), true)
@@ -871,6 +888,7 @@ std::vector<OptionEntryBase *> GameplayOptions::GetEntries()
 		&grabInput,
 		&pauseOnFocusLoss,
 		&skipLoadingScreenThresholdMs,
+		&smoothMovement,
 	};
 }
 

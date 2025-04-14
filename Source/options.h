@@ -637,6 +637,7 @@ struct GameplayOptions : OptionCategoryBase {
 	OptionEntryInt<int> skipLoadingScreenThresholdMs;
 
 	bool smoothMovement;
+	OptionEntryBoolean smoothMovement;
 };
 
 struct ControllerOptions : OptionCategoryBase {
