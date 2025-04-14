@@ -4080,7 +4080,7 @@ msgstr "Qualidade de Reamostragem"
 
 #: Source/options.cpp:504
 msgid "Quality of the resampler, from 0 (lowest) to 5 (highest)."
-msgstr "Qualidade do reamplificador, de 0 (mais baixa) a 5 (mais alta)."
+msgstr "Qualidade do reamostrador, de 0 (mais baixa) a 5 (mais alta)."
 
 #: Source/options.cpp:529
 msgid ""
@@ -10371,11 +10371,11 @@ msgstr "Elixir espectral"
 
 #: Source/translation_dummy.cpp:268
 msgid "Blood Stone"
-msgstr "Pedra Sanguínea"
+msgstr "Pedra sanguínea"
 
 #: Source/translation_dummy.cpp:269
 msgid "Cathedral Map"
-msgstr "Mapa da Catedral"
+msgstr "Mapa da catedral"
 
 #: Source/translation_dummy.cpp:270
 msgid "Heart"
@@ -10391,7 +10391,7 @@ msgstr "Poção de mana"
 
 #: Source/translation_dummy.cpp:273 Source/translation_dummy.cpp:370
 msgid "Scroll of Identify"
-msgstr "Pergaminho de identificar"
+msgstr "Pergaminho de identificação"
 
 #: Source/translation_dummy.cpp:274 Source/translation_dummy.cpp:374
 msgid "Scroll of Town Portal"
@@ -10423,7 +10423,7 @@ msgstr "Cajado de Lazarus"
 
 #: Source/translation_dummy.cpp:281 Source/translation_dummy.cpp:371
 msgid "Scroll of Resurrect"
-msgstr "Pergaminho de ressuscitar"
+msgstr "Pergaminho de ressurreição"
 
 #: Source/translation_dummy.cpp:283 Source/translation_dummy.cpp:454
 msgid "Short Staff"
