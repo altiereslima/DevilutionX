@@ -185,16 +185,6 @@ constexpr int ItemAnimWidth = 96;
 // Defined in player.h, forward declared here to allow for functions which operate in the context of a player.
 struct Player;
 
-enum item_gender {
-    GENDER_MASCULINE,
-    GENDER_FEMININE
-};
-
-enum class ItemGenderType {
-    Masculine,
-    Feminine
-};
-
 struct Item {
 	/** Randomly generated identifier */
 	uint32_t _iSeed = 0;
