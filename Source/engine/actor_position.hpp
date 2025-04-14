@@ -5,9 +5,9 @@
 namespace devilution {
 
 struct ActorPosition {
-    Point tile;      // Grid position
-    Point offset;    // Pixel offset within tile
-    Point velocity;  // Movement velocity
+    Point tile;      // Grid coordinates
+    Point offset;    // Sub-tile offset in pixels
+    Point velocity;  // Current movement velocity
 
     void UpdatePosition() {
         offset += velocity;
