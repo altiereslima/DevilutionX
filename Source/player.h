@@ -57,6 +57,7 @@ enum {
 	// clang-format on
 };
 
+// Define direction modes
 enum direction_mode : uint8_t {
     DIR_S,
     DIR_SW,
@@ -69,24 +70,25 @@ enum direction_mode : uint8_t {
     DIR_OMNI
 };
 
+// Player mode enum - consolidated from multiple definitions
 enum player_mode : uint8_t {
+    // Standing modes
+    PM_STAND = 0,
+    PM_NEWLVL,
+    PM_QUIT,
+
     // Movement modes
-    PM_STAND,
     PM_WALK_NORTHWARDS,
     PM_WALK_SOUTHWARDS,
     PM_WALK_SIDEWAYS,
-    
+
     // Action modes
     PM_ATTACK,
     PM_RATTACK,
     PM_BLOCK,
+    PM_SPELL,
     PM_GOTHIT,
     PM_DEATH,
-    PM_SPELL,
-    
-    // Game state modes
-    PM_NEWLVL,
-    PM_QUIT
 };
 
 enum class PlayerAnimationMode : uint8_t {
@@ -295,7 +297,7 @@ struct Player {
 	int _pILMinDam;
 	int _pILMaxDam;
 	uint32_t _pExperience;
-	PLR_MODE _pmode;
+	player_mode _pmode;
 	int8_t walkpath[MaxPathLengthPlayer];
 	bool plractive;
 	action_id destAction;
