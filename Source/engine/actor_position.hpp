@@ -2,33 +2,37 @@
 
 #include <cstdint>
 
-#include "engine/animationinfo.h"
 #include "engine/point.hpp"
 #include "engine/world_tile.hpp"
 
 namespace devilution {
 
 struct ActorPosition {
-	WorldTilePosition tile;
-	/** Future tile position. Set at start of walking animation. */
-	WorldTilePosition future;
-	/** Tile position of player. Set via network on player input. */
-	WorldTilePosition last;
-	/** Most recent position in dPlayer. */
-	WorldTilePosition old;
-	/** Used for referring to position of player when finishing moving one tile (also used to define target coordinates for spells and ranged attacks) */
-	WorldTilePosition temp;
+    Point tile;      // Tile position (grid coordinates)
+    Point offset;    // Sub-tile offset in pixels
+    Point velocity;  // Movement velocity
 
-	/** @brief Calculates the offset for the walking animation. */
-	DisplacementOf<int8_t> CalculateWalkingOffset(Direction dir, const AnimationInfo &animInfo) const;
-	/** @brief Calculates the offset for the walking animation. */
-	DisplacementOf<int16_t> CalculateWalkingOffsetShifted4(Direction dir, const AnimationInfo &animInfo) const;
-	/** @brief Calculates the offset for the walking animation. */
-	DisplacementOf<int16_t> CalculateWalkingOffsetShifted8(Direction dir, const AnimationInfo &animInfo) const;
-	/** @brief Returns Pixel velocity while walking. */
-	DisplacementOf<int16_t> GetWalkingVelocityShifted4(Direction dir, const AnimationInfo &animInfo) const;
-	/** @brief Returns Pixel velocity while walking. */
-	DisplacementOf<int16_t> GetWalkingVelocityShifted8(Direction dir, const AnimationInfo &animInfo) const;
+    void UpdatePosition() {
+        offset += velocity;
+
+        // Handle offset overflow/underflow
+        while (offset.x >= TILE_WIDTH) {
+            offset.x -= TILE_WIDTH;
+            tile.x++;
+        }
+        while (offset.x < 0) {
+            offset.x += TILE_WIDTH;
+            tile.x--;
+        }
+        while (offset.y >= TILE_HEIGHT) {
+            offset.y -= TILE_HEIGHT;
+            tile.y++;
+        }
+        while (offset.y < 0) {
+            offset.y += TILE_HEIGHT;
+            tile.y--;
+        }
+    }
 };
 
 } // namespace devilution
