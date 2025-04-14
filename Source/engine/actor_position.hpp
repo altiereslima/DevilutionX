@@ -10,6 +10,11 @@ struct ActorPosition {
     Point offset;    // Sub-tile offset in pixels
     Point velocity;  // Movement velocity
 
+    // Members used by legacy code
+    Point future;
+    Point old;
+    Point temp;
+
     void UpdatePosition() {
         offset += velocity;
 
