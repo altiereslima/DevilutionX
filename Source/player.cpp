@@ -17,12 +17,14 @@
 #ifdef _DEBUG
 #include "debug.h"
 #endif
+#include "engine/actor_position.hpp"
 #include "engine/backbuffer_state.hpp"
 #include "engine/load_cl2.hpp"
 #include "engine/load_file.hpp"
 #include "engine/points_in_rectangle_range.hpp"
 #include "engine/random.hpp"
 #include "engine/render/clx_render.hpp"
+#include "engine/size.hpp"
 #include "engine/trn.hpp"
 #include "engine/world_tile.hpp"
 #include "game_mode.hpp"
@@ -3481,7 +3483,7 @@ void PM_ChangeOffset(Player &player)
 		break;
 	}
 
-	player.position.velocity = { dx * PixelMovementSpeed, dy * PixelMovementSpeed };
+	player.position.velocity = Point { dx * PixelMovementSpeed, dy * PixelMovementSpeed };
 	player.position.UpdatePosition();
 
 	// Check if player reached next tile
