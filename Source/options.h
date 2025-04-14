@@ -635,6 +635,8 @@ struct GameplayOptions : OptionCategoryBase {
 	 * Advanced option, not displayed in the UI.
 	 */
 	OptionEntryInt<int> skipLoadingScreenThresholdMs;
+
+	bool smoothMovement;
 };
 
 struct ControllerOptions : OptionCategoryBase {
@@ -901,5 +903,8 @@ void SaveOptions();
  * @brief Load game configurations from ini file
  */
 void LoadOptions();
+
+bool GetSmoothMovement();
+void SetSmoothMovement(bool value);
 
 } // namespace devilution

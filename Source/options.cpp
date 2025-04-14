@@ -231,6 +231,7 @@ void LoadOptions()
 #ifdef __vita__
 	options.Controller.bRearTouch = ini->getBool("Controller", "Enable Rear Touchpad", true);
 #endif
+	sgOptions.Gameplay.smoothMovement = GetOptionValue("Gameplay", "SmoothMovement", true);
 }
 
 void SaveOptions()
@@ -257,8 +258,19 @@ void SaveOptions()
 #ifdef __vita__
 	ini->set("Controller", "Enable Rear Touchpad", options.Controller.bRearTouch);
 #endif
+	SetOptionValue("Gameplay", "SmoothMovement", sgOptions.Gameplay.smoothMovement);
 
 	SaveIni();
+}
+
+bool GetSmoothMovement()
+{
+	return sgOptions.Gameplay.smoothMovement;
+}
+
+void SetSmoothMovement(bool value)
+{
+	sgOptions.Gameplay.smoothMovement = value;
 }
 
 std::string_view OptionEntryBase::GetName() const

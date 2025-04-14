@@ -62,6 +62,15 @@ bool MyPlayerIsDead;
 
 namespace {
 
+constexpr int PixelMovementSpeed = 2;
+constexpr int TileWidth = 32;
+constexpr int TileHeight = 32;
+
+inline int sgn(int val)
+{
+	return (0 < val) - (val < 0);
+}
+
 struct DirectionSettings {
 	Direction dir;
 	PLR_MODE walkMode;
@@ -3433,5 +3442,72 @@ bool TestPlayerDoGotHit(Player &player)
 	return DoGotHit(player);
 }
 #endif
+
+void PM_ChangeOffset(Player &player)
+{
+	if (player._pmode != PM_WALK)
+		return;
+
+	int dx = 0, dy = 0;
+	
+	switch (player._pdir) {
+	case DIR_S:
+		dy = 1;
+		break;
+	case DIR_SW:
+		dx = -1;
+		dy = 1;
+		break;
+	case DIR_W:
+		dx = -1;
+		break;
+	case DIR_NW:
+		dx = -1;
+		dy = -1;
+		break;
+	case DIR_N:
+		dy = -1;
+		break;
+	case DIR_NE:
+		dx = 1;
+		dy = -1;
+		break;
+	case DIR_E:
+		dx = 1;
+		break;
+	case DIR_SE:
+		dx = 1;
+		dy = 1;
+		break;
+	}
+
+	player.position.velocity = { dx * PixelMovementSpeed, dy * PixelMovementSpeed };
+	player.position.UpdatePosition();
+
+	// Check if player reached next tile
+	if (std::abs(player.position.offset.x) >= TileWidth) {
+		player.position.tile.x += sgn(player.position.offset.x);
+		player.position.offset.x = 0;
+		player.position.velocity.x = 0;
+	}
+	if (std::abs(player.position.offset.y) >= TileHeight) {
+		player.position.tile.y += sgn(player.position.offset.y);
+		player.position.offset.y = 0;
+		player.position.velocity.y = 0;
+	}
+}
+
+void ProcessPlayerMovement(Player &player)
+{
+	// ...existing code...
+	
+	if (player._pmode == PM_WALK) {
+		PM_ChangeOffset(player);
+		// Update animations and check collisions
+		// ...existing code...
+	}
+	
+	// ...existing code...
+}
 
 } // namespace devilution
