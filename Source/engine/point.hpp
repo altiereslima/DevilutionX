@@ -73,6 +73,12 @@ struct PointOf {
 		return (*this) += DisplacementOf<typename std::make_signed<CoordT>::type>(direction);
 	}
 
+	DVL_ALWAYS_INLINE constexpr PointOf &operator+=(const PointOf &other) {
+        x += other.x;
+        y += other.y;
+        return *this;
+    }
+
 	template <typename DisplacementDeltaT = int>
 	DVL_ALWAYS_INLINE constexpr PointOf<CoordT> &operator-=(const DisplacementOf<DisplacementDeltaT> &displacement)
 	{

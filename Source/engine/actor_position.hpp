@@ -1,9 +1,6 @@
 #pragma once
 
-#include <cstdint>
-
 #include "engine/point.hpp"
-#include "engine/world_tile.hpp"
 
 namespace devilution {
 

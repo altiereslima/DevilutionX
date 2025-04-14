@@ -333,7 +333,7 @@ struct Player {
 
 	uint8_t plrlevel;
 	bool plrIsOnSetLevel;
-	ActorPosition position;
+	ActorPosition position; // Use the unified ActorPosition structure
 	Direction _pdir; // Direction faced by player (direction enum)
 	HeroClass _pClass;
 
