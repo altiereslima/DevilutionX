@@ -184,12 +184,13 @@ T GetOptionValue(std::string_view category, std::string_view key, T defaultValue
 {
     if (!ini.has_value())
         return defaultValue;
-    if constexpr (std::is_same_v<T, OptionEntryBoolean>) {
-        bool value = ini->getBool(category, key, defaultValue);
-        OptionEntryBoolean result("", OptionEntryFlags::None, "", "", value);
-        return result;
+    if constexpr (std::is_same_v<T, bool>) {
+        return ini->getBool(category, key, defaultValue);
+    } else if constexpr (std::is_integral_v<T>) {
+        return ini->getInt(category, key, defaultValue);
+    } else {
+        return ini->get(category, key, defaultValue);
     }
-    return ini->get<T>(category, key, defaultValue);
 }
 
 template <typename T>
@@ -197,7 +198,11 @@ void SetOptionValue(std::string_view category, std::string_view key, T value)
 {
     if (!ini.has_value())
         return;
-    ini->set(category, key, value);
+    if constexpr (std::is_same_v<T, bool>) {
+        ini->set(category, key, value);
+    } else {
+        ini->set(category, key, value);
+    }
 }
 
 } // namespace
@@ -288,7 +293,7 @@ void SaveOptions()
 
 bool GetSmoothMovement()
 {
-    return sgOptions.Gameplay.smoothMovement.GetValue();
+    return static_cast<bool>(sgOptions.Gameplay.smoothMovement);
 }
 
 void SetSmoothMovement(bool value)
