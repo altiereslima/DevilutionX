@@ -1016,40 +1016,4 @@ void SetPlrVit(Player &player, int v);
 void InitDungMsgs(Player &player);
 void PlayDungMsgs();
 
-// Actor position and movement structure
-struct ActorPosition {
-    Point position;    // Current position
-    Point offset;      // Sub-tile offset in pixels
-    Point velocity;    // Movement velocity
-
-    void UpdatePosition() {
-        offset.x += velocity.x;
-        offset.y += velocity.y;
-
-        // Handle offset overflow/underflow
-        while (offset.x >= TILE_WIDTH) {
-            offset.x -= TILE_WIDTH;
-            position.x++;
-        }
-        while (offset.x < 0) {
-            offset.x += TILE_WIDTH;
-            position.x--;
-        }
-        while (offset.y >= TILE_HEIGHT) {
-            offset.y -= TILE_HEIGHT;
-            position.y++;
-        }
-        while (offset.y < 0) {
-            offset.y += TILE_HEIGHT;
-            position.y--;
-        }
-    }
-};
-
-// Direction settings for movement
-struct DirectionSettings {
-    Point offset;
-    Direction facing;
-};
-
 } // namespace devilution
