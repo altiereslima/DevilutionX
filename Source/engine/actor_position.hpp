@@ -1,7 +1,7 @@
 #pragma once
 
 #include "engine/point.hpp"
-#include "engine/size.hpp" // Include for TILE_WIDTH and TILE_HEIGHT
+#include "engine/size.hpp" // Include for TileWidth and TileHeight
 
 namespace devilution {
 
