@@ -70,25 +70,20 @@ enum direction_mode : uint8_t {
     DIR_OMNI
 };
 
-// Player mode enum - consolidated from multiple definitions
+// Player movement modes
 enum player_mode : uint8_t {
-    // Standing modes
-    PM_STAND = 0,
-    PM_NEWLVL,
-    PM_QUIT,
-
-    // Movement modes
+    PM_STAND,
     PM_WALK_NORTHWARDS,
-    PM_WALK_SOUTHWARDS,
+    PM_WALK_SOUTHWARDS, 
     PM_WALK_SIDEWAYS,
-
-    // Action modes
     PM_ATTACK,
     PM_RATTACK,
     PM_BLOCK,
-    PM_SPELL,
     PM_GOTHIT,
     PM_DEATH,
+    PM_SPELL,
+    PM_NEWLVL,
+    PM_QUIT
 };
 
 enum class PlayerAnimationMode : uint8_t {
@@ -1020,5 +1015,41 @@ void SetPlrDex(Player &player, int v);
 void SetPlrVit(Player &player, int v);
 void InitDungMsgs(Player &player);
 void PlayDungMsgs();
+
+// Actor position and movement structure
+struct ActorPosition {
+    Point position;    // Current position
+    Point offset;      // Sub-tile offset in pixels
+    Point velocity;    // Movement velocity
+
+    void UpdatePosition() {
+        offset.x += velocity.x;
+        offset.y += velocity.y;
+
+        // Handle offset overflow/underflow
+        while (offset.x >= TILE_WIDTH) {
+            offset.x -= TILE_WIDTH;
+            position.x++;
+        }
+        while (offset.x < 0) {
+            offset.x += TILE_WIDTH;
+            position.x--;
+        }
+        while (offset.y >= TILE_HEIGHT) {
+            offset.y -= TILE_HEIGHT;
+            position.y++;
+        }
+        while (offset.y < 0) {
+            offset.y += TILE_HEIGHT;
+            position.y--;
+        }
+    }
+};
+
+// Direction settings for movement
+struct DirectionSettings {
+    Point offset;
+    Direction facing;
+};
 
 } // namespace devilution
