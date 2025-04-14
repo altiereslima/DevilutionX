@@ -51,7 +51,6 @@
 #include "utils/log.hpp"
 #include "utils/str_cat.hpp"
 #include "utils/utf8.hpp"
-#include "levels/dun_tile.hpp"
 
 namespace devilution {
 
@@ -3434,76 +3433,5 @@ bool TestPlayerDoGotHit(Player &player)
 	return DoGotHit(player);
 }
 #endif
-
-constexpr int MOVEMENT_SPEED = 2; // Velocidade do movimento em pixels por frame
-
-void Player::ProcessMovement()
-{
-    if (!movement.isMoving)
-        return;
-
-    // Atualiza a posição em pixels baseado na direção
-    switch (movement.moveDirection) {
-    case Direction::North:
-        movement.pixelY -= movement.movementSpeed;
-        break;
-    case Direction::South:
-        movement.pixelY += movement.movementSpeed;
-        break;
-    case Direction::East:
-        movement.pixelX += movement.movementSpeed;
-        break;
-    case Direction::West:
-        movement.pixelX -= movement.movementSpeed;
-        break;
-    case Direction::NorthEast:
-        movement.pixelX += movement.movementSpeed;
-        movement.pixelY -= movement.movementSpeed;
-        break;
-    case Direction::NorthWest:
-        movement.pixelX -= movement.movementSpeed;
-        movement.pixelY -= movement.movementSpeed;
-        break;
-    case Direction::SouthEast:
-        movement.pixelX += movement.movementSpeed;
-        movement.pixelY += movement.movementSpeed;
-        break;
-    case Direction::SouthWest:
-        movement.pixelX -= movement.movementSpeed;
-        movement.pixelY += movement.movementSpeed;
-        break;
-    default:
-        break;
-    }
-
-    // Verifica se chegou ao próximo tile
-    bool reachedNextTile = false;
-    Point currentTile = position.tile;
-    
-    if (std::abs(movement.pixelX) >= TILE_WIDTH) {
-        currentTile.x += movement.pixelX > 0 ? 1 : -1;
-        movement.pixelX = 0;
-        reachedNextTile = true;
-    }
-    
-    if (std::abs(movement.pixelY) >= TILE_HEIGHT) {
-        currentTile.y += movement.pixelY > 0 ? 1 : -1;
-        movement.pixelY = 0;
-        reachedNextTile = true;
-    }
-
-    // Atualiza a posição do player se alcançou o próximo tile
-    if (reachedNextTile) {
-        if (PosOkPlayer(*this, currentTile)) {
-            position.tile = currentTile;
-            movement.isMoving = false;
-        } else {
-            // Se não pode mover para o próximo tile, para o movimento
-            movement.pixelX = 0;
-            movement.pixelY = 0;
-            movement.isMoving = false;
-        }
-    }
-}
 
 } // namespace devilution

@@ -1,17 +1,13 @@
 #pragma once
 
 #include <cstdint>
+
 #include "utils/enum_traits.h"
 
+#define TILE_WIDTH 64
+#define TILE_HEIGHT 32
+
 namespace devilution {
-
-/** @brief Width of a tile in pixels */
-constexpr int TILE_WIDTH = 32;
-/** @brief Height of a tile in pixels */
-constexpr int TILE_HEIGHT = 32;
-
-/** @brief Index indicating that there is no tile at this location */
-constexpr uint16_t NO_TILE = 0;
 
 /**
  * Level tile type.

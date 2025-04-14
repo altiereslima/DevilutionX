@@ -217,15 +217,6 @@ struct SpellCastInfo {
 	int spellLevel;
 };
 
-struct PlayerMovement {
-    int pixelX;      // Current pixel position X
-    int pixelY;      // Current pixel position Y
-    bool isMoving;   // Is player currently moving
-    int movementSpeed; // Pixels per frame
-    Direction moveDirection; // Current movement direction
-    bool smoothMovement; // Enable PS1-style smooth movement
-};
-
 struct Player {
 	Player() = default;
 	Player(Player &&) noexcept = default;
@@ -917,10 +908,6 @@ public:
 
 		return (type == leftHandItem._itype && leftHandItem._iStatFlag) || (type == rightHandItem._itype && rightHandItem._iStatFlag);
 	}
-
-	PlayerMovement movement;
-
-	void ProcessMovement();
 };
 
 extern DVL_API_FOR_TEST uint8_t MyPlayerId;
