@@ -4080,7 +4080,7 @@ msgstr "Qualidade de Reamostragem"
 
 #: Source/options.cpp:504
 msgid "Quality of the resampler, from 0 (lowest) to 5 (highest)."
-msgstr "Qualidade do reamplificador, de 0 (mais baixa) a 5 (mais alta)."
+msgstr "Qualidade do reamostrador, de 0 (mais baixa) a 5 (mais alta)."
 
 #: Source/options.cpp:529
 msgid ""
@@ -10371,11 +10371,11 @@ msgstr "Elixir espectral"
 
 #: Source/translation_dummy.cpp:268
 msgid "Blood Stone"
-msgstr "Pedra Sanguínea"
+msgstr "Pedra sanguínea"
 
 #: Source/translation_dummy.cpp:269
 msgid "Cathedral Map"
-msgstr "Mapa da Catedral"
+msgstr "Mapa da catedral"
 
 #: Source/translation_dummy.cpp:270
 msgid "Heart"
@@ -10391,7 +10391,7 @@ msgstr "Poção de mana"
 
 #: Source/translation_dummy.cpp:273 Source/translation_dummy.cpp:370
 msgid "Scroll of Identify"
-msgstr "Pergaminho de identificar"
+msgstr "Pergaminho de identificação"
 
 #: Source/translation_dummy.cpp:274 Source/translation_dummy.cpp:374
 msgid "Scroll of Town Portal"
@@ -10423,7 +10423,7 @@ msgstr "Cajado de Lazarus"
 
 #: Source/translation_dummy.cpp:281 Source/translation_dummy.cpp:371
 msgid "Scroll of Resurrect"
-msgstr "Pergaminho de ressuscitar"
+msgstr "Pergaminho de ressurreição"
 
 #: Source/translation_dummy.cpp:283 Source/translation_dummy.cpp:454
 msgid "Short Staff"
@@ -11339,11 +11339,11 @@ msgstr "de mithril"
 
 #: Source/translation_dummy.cpp:605
 msgid "Meteoric"
-msgstr "meteórico(a)"
+msgstr "meteórico"
 
 #: Source/translation_dummy.cpp:607
 msgid "Strange"
-msgstr "estranho(a)"
+msgstr "estranho"
 
 #: Source/translation_dummy.cpp:608
 msgid "Useless"
@@ -11351,15 +11351,15 @@ msgstr "inútil"
 
 #: Source/translation_dummy.cpp:609
 msgid "Bent"
-msgstr "envergado(a)"
+msgstr "envergado"
 
 #: Source/translation_dummy.cpp:610
 msgid "Weak"
-msgstr "fraco(a)"
+msgstr "fraco"
 
 #: Source/translation_dummy.cpp:611
 msgid "Jagged"
-msgstr "serrilhado(a)"
+msgstr "serrilhado"
 
 #: Source/translation_dummy.cpp:612
 msgid "Deadly"
@@ -11367,11 +11367,11 @@ msgstr "mortal"
 
 #: Source/translation_dummy.cpp:613
 msgid "Heavy"
-msgstr "pesado(a)"
+msgstr "pesado"
 
 #: Source/translation_dummy.cpp:614
 msgid "Vicious"
-msgstr "vicioso(a)"
+msgstr "vicioso"
 
 #: Source/translation_dummy.cpp:615
 msgid "Brutal"
@@ -11379,7 +11379,7 @@ msgstr "brutal"
 
 #: Source/translation_dummy.cpp:616
 msgid "Massive"
-msgstr "imenso(a)"
+msgstr "imenso"
 
 #: Source/translation_dummy.cpp:617
 msgid "Savage"
@@ -11391,23 +11391,23 @@ msgstr "implacável"
 
 #: Source/translation_dummy.cpp:619
 msgid "Merciless"
-msgstr "impiedoso(a)"
+msgstr "impiedoso"
 
 #: Source/translation_dummy.cpp:620
 msgid "Clumsy"
-msgstr "desajeitado(a)"
+msgstr "desajeitado"
 
 #: Source/translation_dummy.cpp:621
 msgid "Dull"
-msgstr "enfadonho(a)"
+msgstr "enfadonho"
 
 #: Source/translation_dummy.cpp:622
 msgid "Sharp"
-msgstr "afiado(a)"
+msgstr "afiado"
 
 #: Source/translation_dummy.cpp:623 Source/translation_dummy.cpp:633
 msgid "Fine"
-msgstr "fino(a)"
+msgstr "fino"
 
 #: Source/translation_dummy.cpp:624
 msgid "Warrior's"
@@ -11443,7 +11443,7 @@ msgstr "vulnerável"
 
 #: Source/translation_dummy.cpp:632
 msgid "Rusted"
-msgstr "enferrujado(a)"
+msgstr "enferrujado"
 
 #: Source/translation_dummy.cpp:634
 msgid "Strong"
@@ -11451,7 +11451,7 @@ msgstr "forte"
 
 #: Source/translation_dummy.cpp:635
 msgid "Grand"
-msgstr "grandioso(a)"
+msgstr "grandioso"
 
 #: Source/translation_dummy.cpp:636
 msgid "Valiant"
@@ -11459,15 +11459,15 @@ msgstr "valente"
 
 #: Source/translation_dummy.cpp:637
 msgid "Glorious"
-msgstr "glorioso(a)"
+msgstr "glorioso"
 
 #: Source/translation_dummy.cpp:638
 msgid "Blessed"
-msgstr "abençoado(a)"
+msgstr "abençoado"
 
 #: Source/translation_dummy.cpp:639
 msgid "Saintly"
-msgstr "santo(a)"
+msgstr "santo"
 
 #: Source/translation_dummy.cpp:640
 msgid "Awesome"
@@ -11475,11 +11475,11 @@ msgstr "impressionante"
 
 #: Source/translation_dummy.cpp:642
 msgid "Godly"
-msgstr "divino(a)"
+msgstr "divino"
 
 #: Source/translation_dummy.cpp:643
 msgid "Red"
-msgstr "vermelho(a)"
+msgstr "vermelho"
 
 #: Source/translation_dummy.cpp:644 Source/translation_dummy.cpp:645
 msgid "Crimson"
@@ -11515,7 +11515,7 @@ msgstr "safira"
 
 #: Source/translation_dummy.cpp:653
 msgid "White"
-msgstr "branco(a)"
+msgstr "branco"
 
 #: Source/translation_dummy.cpp:654
 msgid "Pearl"
@@ -11603,7 +11603,7 @@ msgstr "do arcanjo"
 
 #: Source/translation_dummy.cpp:675
 msgid "Plentiful"
-msgstr "farto(a)"
+msgstr "farto"
 
 #: Source/translation_dummy.cpp:676
 msgid "Bountiful"

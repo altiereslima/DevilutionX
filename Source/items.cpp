@@ -2374,6 +2374,49 @@ std::string GetTranslatedItemNameMagical(const Item &item, bool hellfireItem, bo
 	return identifiedName;
 }
 
+// Mapeamento de tipos de itens para seus gêneros gramaticais em português
+ItemGenderType GetItemGrammaticalGender(ItemType type)
+{
+    switch (type) {
+        // Femininos
+        case ItemType::Ring:     return ItemGenderType::Feminine; // aliança, joia
+        case ItemType::Amulet:   return ItemGenderType::Feminine; // amuleto -> "a" amuleto 
+        case ItemType::LightArmor:
+        case ItemType::MediumArmor:
+        case ItemType::HeavyArmor:
+        case ItemType::Shield:   return ItemGenderType::Feminine; // armadura, proteção
+        case ItemType::Bow:      return ItemGenderType::Feminine; // besta, aljava
+        
+        // Masculinos
+        case ItemType::Sword:    return ItemGenderType::Masculine; // sabre, montante
+        case ItemType::Staff:    return ItemGenderType::Masculine; // cajado, bastão  
+        case ItemType::Axe:      return ItemGenderType::Masculine; // machado
+        case ItemType::Mace:     return ItemGenderType::Masculine; // martelo, porrete
+        case ItemType::Helm:     return ItemGenderType::Masculine; // elmo, capacete
+        default:                 return ItemGenderType::Masculine; // caso padrão
+    };
+}
+
+void ApplyItemAffix(Item& item, const AffixData& affix) 
+{
+    const bool isMasculine = GetItemGrammaticalGender(item._itype) == ItemGenderType::Masculine;
+    std::string affixName = affix.name;
+    
+    // Aplica o sufixo específico do gênero
+    if (!isMasculine) {
+        // Converte terminação masculina para feminina quando necessário
+        size_t len = affixName.length();
+        if (len > 1) {
+            if (affixName[len-1] == 'o')
+                affixName[len-1] = 'a';
+            else if (affixName.substr(len-2) == "or")  // Exemplo: protetor -> protetora
+                affixName += 'a';
+        }
+    }
+    
+    strcpy(item.affixName, affixName.c_str());
+}
+
 } // namespace
 
 bool IsItemAvailable(int i)
