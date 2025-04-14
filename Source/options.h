@@ -548,7 +548,7 @@ struct GraphicsOptions : OptionCategoryBase {
 	OptionEntryBoolean showFPS;
 };
 
-struct GameplayOptions : OptionCategoryBase {
+struct GameplayOptions : public OptionCategoryBase {
 	GameplayOptions();
 	std::vector<OptionEntryBase *> GetEntries() override;
 
@@ -636,7 +636,6 @@ struct GameplayOptions : OptionCategoryBase {
 	 */
 	OptionEntryInt<int> skipLoadingScreenThresholdMs;
 
-	bool smoothMovement;
 	OptionEntryBoolean smoothMovement;
 };
 

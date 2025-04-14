@@ -184,7 +184,12 @@ T GetOptionValue(std::string_view category, std::string_view key, T defaultValue
 {
     if (!ini.has_value())
         return defaultValue;
-    return ini->get<T>(category, key, defaultValue);
+    if constexpr (std::is_same_v<T, bool>)
+        return ini->getBool(category, key, defaultValue);
+    else if constexpr (std::is_integral_v<T>)
+        return ini->getInt(category, key, defaultValue);
+    else
+        return ini->get(category, key, defaultValue);
 }
 
 template <typename T>
