@@ -288,12 +288,12 @@ void SaveOptions()
 
 bool GetSmoothMovement()
 {
-	return sgOptions.Gameplay.smoothMovement;
+    return static_cast<bool>(sgOptions.Gameplay.smoothMovement);
 }
 
 void SetSmoothMovement(bool value)
 {
-	sgOptions.Gameplay.smoothMovement = value;
+    sgOptions.Gameplay.smoothMovement.SetValue(value);
 }
 
 std::string_view OptionEntryBase::GetName() const
