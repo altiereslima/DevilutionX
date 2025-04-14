@@ -110,4 +110,7 @@ struct SizeOf {
 
 using Size = SizeOf<int>;
 
+constexpr int TileWidth = 32;
+constexpr int TileHeight = 32;
+
 } // namespace devilution
