@@ -57,6 +57,29 @@ enum {
 	// clang-format on
 };
 
+enum direction_mode : uint8_t {
+    DIR_S,
+    DIR_SW,
+    DIR_W,
+    DIR_NW,
+    DIR_N,
+    DIR_NE,
+    DIR_E,
+    DIR_SE,
+    DIR_OMNI
+};
+
+enum player_mode : uint8_t {
+    PM_STAND,
+    PM_WALK,
+    PM_ATTACK,
+    PM_GOTHIT,
+    PM_DEATH,
+    PM_SPELL
+};
+
+constexpr int PixelMovementSpeed = 2;
+
 enum class CharacterAttribute : uint8_t {
 	Strength,
 	Magic,
