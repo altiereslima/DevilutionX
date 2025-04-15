@@ -51,7 +51,6 @@
 #include "utils/log.hpp"
 #include "utils/str_cat.hpp"
 #include "utils/utf8.hpp"
-#include "engine/clx_draw.hpp" // Adicione esta linha se necessário
 
 namespace devilution {
 
@@ -2236,7 +2235,7 @@ void SetPlrAnims(Player &player)
  */
 void CreatePlayer(Player &player, HeroClass c)
 {
-	player = Player();
+	player = {};
 	SetRndSeed(SDL_GetTicks());
 
 	player.setCharacterLevel(1);
@@ -3434,27 +3433,5 @@ bool TestPlayerDoGotHit(Player &player)
 	return DoGotHit(player);
 }
 #endif
-
-void StartPlayerPixelMovement(Player &player, Direction dir)
-{
-	player.pixelPos.Move(dir);
-	player.position.tile = player.pixelPos.GetTilePosition();
-	player._pmode = PM_WALK_SOUTHWARDS; // Ajuste conforme a direção real
-}
-
-// Exemplo de adaptação da renderização
-void DrawPlayer(const Player &player)
-{
-	const Point &pixelPos = player.pixelPos.pixelPosition;
-	// Use ClxDrawSprite ou função equivalente do seu projeto
-	ClxDrawSprite(/*surface*/ nullptr, pixelPos.x, pixelPos.y, player.currentSprite());
-}
-
-// Exemplo de colisão usando pixelPos
-bool IsPlayerPositionWalkable(const Player &player)
-{
-	Point tilePos = player.pixelPos.GetTilePosition();
-	return IsTileWalkable(tilePos);
-}
 
 } // namespace devilution

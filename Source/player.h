@@ -31,7 +31,6 @@
 #include "utils/attributes.h"
 #include "utils/enum_traits.h"
 #include "utils/is_of.hpp"
-#include "player_pixel_movement.hpp"
 
 namespace devilution {
 
@@ -219,11 +218,7 @@ struct SpellCastInfo {
 };
 
 struct Player {
-	Player()
-	    : pixelPos(Point { 0, 0 })
-	{
-	}
-
+	Player() = default;
 	Player(Player &&) noexcept = default;
 	Player &operator=(Player &&) noexcept = default;
 
@@ -374,7 +369,6 @@ public:
 	uint8_t pDiabloKillLevel;
 	uint16_t wReflections;
 	ItemSpecialEffectHf pDamAcFlags;
-	devilution::PlayerPixelPosition pixelPos;
 
 	[[nodiscard]] std::string_view name() const
 	{
