@@ -174,15 +174,6 @@ public:
 	void LoadFromIni(std::string_view category) override;
 	void SaveToIni(std::string_view category) const override;
 
-	// Add operator bool() for implicit conversion to bool
-	operator bool() const { return value; }
-
-	// Add operator= to handle bool assignment
-	OptionEntryBoolean& operator=(bool newValue) {
-		SetValue(newValue);
-		return *this;
-	}
-
 private:
 	bool defaultValue;
 	bool value;
@@ -557,7 +548,7 @@ struct GraphicsOptions : OptionCategoryBase {
 	OptionEntryBoolean showFPS;
 };
 
-struct GameplayOptions : public OptionCategoryBase {
+struct GameplayOptions : OptionCategoryBase {
 	GameplayOptions();
 	std::vector<OptionEntryBase *> GetEntries() override;
 
@@ -644,8 +635,6 @@ struct GameplayOptions : public OptionCategoryBase {
 	 * Advanced option, not displayed in the UI.
 	 */
 	OptionEntryInt<int> skipLoadingScreenThresholdMs;
-
-	OptionEntryBoolean smoothMovement;
 };
 
 struct ControllerOptions : OptionCategoryBase {
@@ -912,8 +901,5 @@ void SaveOptions();
  * @brief Load game configurations from ini file
  */
 void LoadOptions();
-
-bool GetSmoothMovement();
-void SetSmoothMovement(bool value);
 
 } // namespace devilution

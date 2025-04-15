@@ -73,12 +73,6 @@ struct PointOf {
 		return (*this) += DisplacementOf<typename std::make_signed<CoordT>::type>(direction);
 	}
 
-	DVL_ALWAYS_INLINE constexpr PointOf &operator+=(const PointOf &other) {
-        x += other.x;
-        y += other.y;
-        return *this;
-    }
-
 	template <typename DisplacementDeltaT = int>
 	DVL_ALWAYS_INLINE constexpr PointOf<CoordT> &operator-=(const DisplacementOf<DisplacementDeltaT> &displacement)
 	{
@@ -178,6 +172,30 @@ struct PointOf {
 	DVL_ALWAYS_INLINE constexpr PointOf<CoordT> worldToMega() const
 	{
 		return { static_cast<CoordT>((x - 16) / 2), static_cast<CoordT>((y - 16) / 2) };
+	}
+
+	/**
+	 * @brief Converts a coordinate in tiles to pixels (assuming 32 pixels per tile)
+	 */
+	DVL_ALWAYS_INLINE constexpr PointOf<CoordT> tileToPixel() const
+	{
+		return { static_cast<CoordT>(x * 32), static_cast<CoordT>(y * 32) };
+	}
+
+	/**
+	 * @brief Converts a coordinate in pixels to tiles (assuming 32 pixels per tile)
+	 */
+	DVL_ALWAYS_INLINE constexpr PointOf<CoordT> pixelToTile() const
+	{
+		return { static_cast<CoordT>(x / 32), static_cast<CoordT>(y / 32) };
+	}
+
+	/**
+	 * @brief Construct from pixel coordinates directly
+	 */
+	DVL_ALWAYS_INLINE constexpr static PointOf<CoordT> FromPixels(CoordT px, CoordT py)
+	{
+		return { px, py };
 	}
 };
 

@@ -179,32 +179,6 @@ bool HardwareCursorDefault()
 }
 #endif
 
-template <typename T>
-T GetOptionValue(std::string_view category, std::string_view key, T defaultValue)
-{
-    if (!ini.has_value())
-        return defaultValue;
-    if constexpr (std::is_same_v<T, bool>) {
-        return ini->getBool(category, key, defaultValue);
-    } else if constexpr (std::is_integral_v<T>) {
-        return ini->getInt(category, key, defaultValue);
-    } else {
-        return ini->get(category, key, defaultValue);
-    }
-}
-
-template <typename T>
-void SetOptionValue(std::string_view category, std::string_view key, T value)
-{
-    if (!ini.has_value())
-        return;
-    if constexpr (std::is_same_v<T, bool>) {
-        ini->set(category, key, value);
-    } else {
-        ini->set(category, key, value);
-    }
-}
-
 } // namespace
 
 Options &GetOptions()
@@ -212,8 +186,6 @@ Options &GetOptions()
 	static Options options;
 	return options;
 }
-
-Options &sgOptions = GetOptions();
 
 #if SDL_VERSION_ATLEAST(2, 0, 0)
 bool HardwareCursorSupported()
@@ -259,7 +231,6 @@ void LoadOptions()
 #ifdef __vita__
 	options.Controller.bRearTouch = ini->getBool("Controller", "Enable Rear Touchpad", true);
 #endif
-	sgOptions.Gameplay.smoothMovement = GetOptionValue("Gameplay", "SmoothMovement", true);
 }
 
 void SaveOptions()
@@ -286,19 +257,8 @@ void SaveOptions()
 #ifdef __vita__
 	ini->set("Controller", "Enable Rear Touchpad", options.Controller.bRearTouch);
 #endif
-	SetOptionValue("Gameplay", "SmoothMovement", sgOptions.Gameplay.smoothMovement);
 
 	SaveIni();
-}
-
-bool GetSmoothMovement()
-{
-    return static_cast<bool>(sgOptions.Gameplay.smoothMovement);
-}
-
-void SetSmoothMovement(bool value)
-{
-    sgOptions.Gameplay.smoothMovement.SetValue(value);
 }
 
 std::string_view OptionEntryBase::GetName() const
@@ -809,7 +769,6 @@ std::vector<OptionEntryBase *> GraphicsOptions::GetEntries()
 GameplayOptions::GameplayOptions()
     : OptionCategoryBase("Game", N_("Gameplay"), N_("Gameplay Settings"))
     , tickRate("Speed", OptionEntryFlags::Invisible, "Speed", "Gameplay ticks per second.", 20)
-    , smoothMovement("SmoothMovement", OptionEntryFlags::None, N_("Smooth Movement"), N_("Enable continuous pixel movement instead of tile-based."), true)
     , runInTown("Run in Town", OptionEntryFlags::CantChangeInMultiPlayer, N_("Run in Town"), N_("Enable jogging/fast walking in town for Diablo and Hellfire. This option was introduced in the expansion."), false)
     , grabInput("Grab Input", OptionEntryFlags::None, N_("Grab Input"), N_("When enabled mouse is locked to the game window."), false)
     , pauseOnFocusLoss("Pause Game When Window Loses Focus", OptionEntryFlags::None, N_("Pause Game When Window Loses Focus"), N_("When enabled, the game will pause when focus is lost."), true)
@@ -898,7 +857,6 @@ std::vector<OptionEntryBase *> GameplayOptions::GetEntries()
 		&grabInput,
 		&pauseOnFocusLoss,
 		&skipLoadingScreenThresholdMs,
-		&smoothMovement,
 	};
 }
 

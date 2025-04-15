@@ -700,80 +700,7 @@ bool IsLevelUpButtonVisible()
 	return true;
 }
 
-bool IsMovementInputActive()
-{
-	if (sgbControllerActive) {
-		if (IsLeftStickMoving() || IsDpadMoving())
-			return true;
-	} else {
-		if (GetAsyncKeyState(VK_LEFT) & 0x8000 || GetAsyncKeyState('A') & 0x8000
-		    || GetAsyncKeyState(VK_RIGHT) & 0x8000 || GetAsyncKeyState('D') & 0x8000
-		    || GetAsyncKeyState(VK_UP) & 0x8000 || GetAsyncKeyState('W') & 0x8000
-		    || GetAsyncKeyState(VK_DOWN) & 0x8000 || GetAsyncKeyState('S') & 0x8000) {
-			return true;
-		}
-	}
-	return false;
-}
-
-void GetMovementDirection(int &dx, int &dy)
-{
-	dx = 0;
-	dy = 0;
-
-	if (sgbControllerActive) {
-		float stickX, stickY;
-		GetLeftStickValues(&stickX, &stickY);
-
-		if (std::abs(stickX) > 0.25f)
-			dx = sgn(static_cast<int>(stickX));
-		if (std::abs(stickY) > 0.25f)
-			dy = sgn(static_cast<int>(stickY));
-
-		if (IsDpadMoving()) {
-			if (IsButtonPressed(ControllerButton::BUTTON_DPAD_LEFT))
-				dx = -1;
-			else if (IsButtonPressed(ControllerButton::BUTTON_DPAD_RIGHT))
-				dx = 1;
-
-			if (IsButtonPressed(ControllerButton::BUTTON_DPAD_UP))
-				dy = -1;
-			else if (IsButtonPressed(ControllerButton::BUTTON_DPAD_DOWN))
-				dy = 1;
-		}
-	} else {
-		if (GetAsyncKeyState(VK_LEFT) & 0x8000 || GetAsyncKeyState('A') & 0x8000)
-			dx = -1;
-		else if (GetAsyncKeyState(VK_RIGHT) & 0x8000 || GetAsyncKeyState('D') & 0x8000)
-			dx = 1;
-
-		if (GetAsyncKeyState(VK_UP) & 0x8000 || GetAsyncKeyState('W') & 0x8000)
-			dy = -1;
-		else if (GetAsyncKeyState(VK_DOWN) & 0x8000 || GetAsyncKeyState('S') & 0x8000)
-			dy = 1;
-	}
-}
-
-void CheckPlayerMovement(Player &player)
-{
-	if (player._pmode == PM_STAND || player._pmode == PM_WALK) {
-		int dx, dy;
-		GetMovementDirection(dx, dy);
-
-		if (dx != 0 || dy != 0) {
-			player._pdir = GetDirection(dx, dy);
-
-			if (player._pmode == PM_STAND) {
-				player._pmode = PM_WALK;
-				player.position.velocity.x = dx * PixelMovementSpeed;
-				player.position.velocity.y = dy * PixelMovementSpeed;
-			}
-		} else if (player._pmode == PM_WALK) {
-			player._pmode = PM_STAND;
-			player.position.velocity = { 0, 0 };
-		}
-	}
-}
+} // namespace
 
 void CalculatePanelAreas()
 {
@@ -1881,23 +1808,6 @@ int GetGoldDropMax()
 bool HandleGoldDropTextInputEvent(const SDL_Event &event)
 {
 	return HandleInputEvent(event, GoldDropInputState);
-}
-
-void game_loop(bool bStartup)
-{
-	// ...existing code...
-
-	while (true) {
-		// ...existing code...
-
-		if (!gbRunGame || !gbProcessPlayers || gbProcessPlayers)
-			continue;
-
-		CheckPlayerMovement(*MyPlayer);
-		ProcessPlayerMovement(*MyPlayer);
-
-		// ...existing code...
-	}
 }
 
 } // namespace devilution

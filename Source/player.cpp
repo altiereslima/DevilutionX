@@ -17,14 +17,12 @@
 #ifdef _DEBUG
 #include "debug.h"
 #endif
-#include "engine/actor_position.hpp"
 #include "engine/backbuffer_state.hpp"
 #include "engine/load_cl2.hpp"
 #include "engine/load_file.hpp"
 #include "engine/points_in_rectangle_range.hpp"
 #include "engine/random.hpp"
 #include "engine/render/clx_render.hpp"
-#include "engine/size.hpp"
 #include "engine/trn.hpp"
 #include "engine/world_tile.hpp"
 #include "game_mode.hpp"
@@ -63,15 +61,6 @@ Player *InspectPlayer;
 bool MyPlayerIsDead;
 
 namespace {
-
-constexpr int PixelMovementSpeed = 2;
-constexpr int TileWidth = 32;
-constexpr int TileHeight = 32;
-
-inline int sgn(int val)
-{
-	return (0 < val) - (val < 0);
-}
 
 struct DirectionSettings {
 	Direction dir;
@@ -3444,72 +3433,5 @@ bool TestPlayerDoGotHit(Player &player)
 	return DoGotHit(player);
 }
 #endif
-
-void PM_ChangeOffset(Player &player)
-{
-	if (player._pmode != PM_WALK)
-		return;
-
-	int dx = 0, dy = 0;
-	
-	switch (player._pdir) {
-	case DIR_S:
-		dy = 1;
-		break;
-	case DIR_SW:
-		dx = -1;
-		dy = 1;
-		break;
-	case DIR_W:
-		dx = -1;
-		break;
-	case DIR_NW:
-		dx = -1;
-		dy = -1;
-		break;
-	case DIR_N:
-		dy = -1;
-		break;
-	case DIR_NE:
-		dx = 1;
-		dy = -1;
-		break;
-	case DIR_E:
-		dx = 1;
-		break;
-	case DIR_SE:
-		dx = 1;
-		dy = 1;
-		break;
-	}
-
-	player.position.velocity = Point { dx * PixelMovementSpeed, dy * PixelMovementSpeed };
-	player.position.UpdatePosition();
-
-	// Check if player reached next tile
-	if (std::abs(player.position.offset.x) >= TileWidth) {
-		player.position.tile.x += sgn(player.position.offset.x);
-		player.position.offset.x = 0;
-		player.position.velocity.x = 0;
-	}
-	if (std::abs(player.position.offset.y) >= TileHeight) {
-		player.position.tile.y += sgn(player.position.offset.y);
-		player.position.offset.y = 0;
-		player.position.velocity.y = 0;
-	}
-}
-
-void ProcessPlayerMovement(Player &player)
-{
-	// ...existing code...
-	
-	if (player._pmode == PM_WALK) {
-		PM_ChangeOffset(player);
-		// Update animations and check collisions
-		// ...existing code...
-	}
-	
-	// ...existing code...
-}
 
 } // namespace devilution

@@ -57,48 +57,6 @@ enum {
 	// clang-format on
 };
 
-// Define direction modes
-enum direction_mode : uint8_t {
-    DIR_S,
-    DIR_SW,
-    DIR_W,
-    DIR_NW,
-    DIR_N,
-    DIR_NE,
-    DIR_E,
-    DIR_SE,
-    DIR_OMNI
-};
-
-// Player movement modes
-enum player_mode : uint8_t {
-    PM_STAND,
-    PM_WALK_NORTHWARDS,
-    PM_WALK_SOUTHWARDS, 
-    PM_WALK_SIDEWAYS,
-    PM_ATTACK,
-    PM_RATTACK,
-    PM_BLOCK,
-    PM_GOTHIT,
-    PM_DEATH,
-    PM_SPELL,
-    PM_NEWLVL,
-    PM_QUIT
-};
-
-enum class PlayerAnimationMode : uint8_t {
-    Stand = 0,
-    Attack,
-    GotHit,
-    Death,
-    Spell,
-    Walk,
-    Block,
-    // Add other animation modes as needed
-};
-
-constexpr int PixelMovementSpeed = 2;
-
 enum class CharacterAttribute : uint8_t {
 	Strength,
 	Magic,
@@ -145,6 +103,21 @@ enum class PlayerWeaponGraphic : uint8_t {
 	Mace,
 	MaceShield,
 	Staff,
+};
+
+enum PLR_MODE : uint8_t {
+	PM_STAND,
+	PM_WALK_NORTHWARDS,
+	PM_WALK_SOUTHWARDS,
+	PM_WALK_SIDEWAYS,
+	PM_ATTACK,
+	PM_RATTACK,
+	PM_BLOCK,
+	PM_GOTHIT,
+	PM_DEATH,
+	PM_SPELL,
+	PM_NEWLVL,
+	PM_QUIT,
 };
 
 enum action_id : int8_t {
@@ -292,7 +265,7 @@ struct Player {
 	int _pILMinDam;
 	int _pILMaxDam;
 	uint32_t _pExperience;
-	player_mode _pmode;
+	PLR_MODE _pmode;
 	int8_t walkpath[MaxPathLengthPlayer];
 	bool plractive;
 	action_id destAction;
@@ -333,7 +306,7 @@ struct Player {
 
 	uint8_t plrlevel;
 	bool plrIsOnSetLevel;
-	ActorPosition position; // Use the ActorPosition from header
+	ActorPosition position;
 	Direction _pdir; // Direction faced by player (direction enum)
 	HeroClass _pClass;
 

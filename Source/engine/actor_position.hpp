@@ -1,51 +1,34 @@
 #pragma once
 
-#include "engine/point.hpp"
-#include "engine/size.hpp" // Include for TileWidth and TileHeight
+#include <cstdint>
+
 #include "engine/animationinfo.h"
-#include "engine/direction.hpp"
+#include "engine/point.hpp"
+#include "engine/world_tile.hpp"
 
 namespace devilution {
 
 struct ActorPosition {
-    Point tile;      // Position in tile coordinates
-    Point offset;    // Sub-tile offset in pixels
-    Point velocity;  // Movement velocity
+	WorldTilePosition tile;
+	/** Future tile position. Set at start of walking animation. */
+	WorldTilePosition future;
+	/** Tile position of player. Set via network on player input. */
+	WorldTilePosition last;
+	/** Most recent position in dPlayer. */
+	WorldTilePosition old;
+	/** Used for referring to position of player when finishing moving one tile (also used to define target coordinates for spells and ranged attacks) */
+	WorldTilePosition temp;
 
-    // Members used by legacy code
-    Point future;
-    Point old;
-    Point temp;
-    Point last;
-
-    void UpdatePosition() {
-        offset += velocity;
-
-        // Handle offset overflow/underflow
-        while (offset.x >= devilution::TileWidth) {
-            offset.x -= devilution::TileWidth;
-            tile.x++;
-        }
-        while (offset.x < 0) {
-            offset.x += devilution::TileWidth;
-            tile.x--;
-        }
-        while (offset.y >= devilution::TileHeight) {
-            offset.y -= devilution::TileHeight;
-            tile.y++;
-        }
-        while (offset.y < 0) {
-            offset.y += devilution::TileHeight;
-            tile.y--;
-        }
-    }
-
-    // Stub for compatibility; implement as needed
-    WorldTileDisplacement CalculateWalkingOffset(Direction /*direction*/, const AnimationInfo & /*animInfo*/) const
-    {
-        // Return zero displacement for now; replace with real logic if needed
-        return { 0, 0 };
-    }
+	/** @brief Calculates the offset for the walking animation. */
+	DisplacementOf<int8_t> CalculateWalkingOffset(Direction dir, const AnimationInfo &animInfo) const;
+	/** @brief Calculates the offset for the walking animation. */
+	DisplacementOf<int16_t> CalculateWalkingOffsetShifted4(Direction dir, const AnimationInfo &animInfo) const;
+	/** @brief Calculates the offset for the walking animation. */
+	DisplacementOf<int16_t> CalculateWalkingOffsetShifted8(Direction dir, const AnimationInfo &animInfo) const;
+	/** @brief Returns Pixel velocity while walking. */
+	DisplacementOf<int16_t> GetWalkingVelocityShifted4(Direction dir, const AnimationInfo &animInfo) const;
+	/** @brief Returns Pixel velocity while walking. */
+	DisplacementOf<int16_t> GetWalkingVelocityShifted8(Direction dir, const AnimationInfo &animInfo) const;
 };
 
 } // namespace devilution
