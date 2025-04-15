@@ -31,6 +31,7 @@
 #include "utils/attributes.h"
 #include "utils/enum_traits.h"
 #include "utils/is_of.hpp"
+#include "player_pixel_movement.hpp"
 
 namespace devilution {
 
@@ -369,6 +370,7 @@ public:
 	uint8_t pDiabloKillLevel;
 	uint16_t wReflections;
 	ItemSpecialEffectHf pDamAcFlags;
+	devilution::PlayerPixelPosition pixelPos;
 
 	[[nodiscard]] std::string_view name() const
 	{

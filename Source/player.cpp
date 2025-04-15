@@ -3434,4 +3434,26 @@ bool TestPlayerDoGotHit(Player &player)
 }
 #endif
 
+void StartPlayerPixelMovement(Player &player, Direction dir)
+{
+	player.pixelPos.Move(dir);
+	player.position.tile = player.pixelPos.GetTilePosition();
+	player._pmode = PM_WALK_SOUTHWARDS; // Ajuste conforme a direção real
+}
+
+// Exemplo de adaptação da renderização
+void DrawPlayer(const Player &player)
+{
+	const Point &pixelPos = player.pixelPos.pixelPosition;
+	// Supondo que DrawSprite(sprite, x, y) desenha o jogador
+	DrawSprite(player.currentSprite(), pixelPos.x, pixelPos.y);
+}
+
+// Exemplo de colisão usando pixelPos
+bool IsPlayerPositionWalkable(const Player &player)
+{
+	Point tilePos = player.pixelPos.GetTilePosition();
+	return IsTileWalkable(tilePos);
+}
+
 } // namespace devilution
