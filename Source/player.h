@@ -219,7 +219,11 @@ struct SpellCastInfo {
 };
 
 struct Player {
-	Player() = default;
+	Player()
+	    : pixelPos(Point { 0, 0 })
+	{
+	}
+
 	Player(Player &&) noexcept = default;
 	Player &operator=(Player &&) noexcept = default;
 

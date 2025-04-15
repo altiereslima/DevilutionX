@@ -51,6 +51,7 @@
 #include "utils/log.hpp"
 #include "utils/str_cat.hpp"
 #include "utils/utf8.hpp"
+#include "engine/clx_draw.hpp" // Adicione esta linha se necessário
 
 namespace devilution {
 
@@ -2235,7 +2236,7 @@ void SetPlrAnims(Player &player)
  */
 void CreatePlayer(Player &player, HeroClass c)
 {
-	player = {};
+	player = Player();
 	SetRndSeed(SDL_GetTicks());
 
 	player.setCharacterLevel(1);
@@ -3445,8 +3446,8 @@ void StartPlayerPixelMovement(Player &player, Direction dir)
 void DrawPlayer(const Player &player)
 {
 	const Point &pixelPos = player.pixelPos.pixelPosition;
-	// Supondo que DrawSprite(sprite, x, y) desenha o jogador
-	DrawSprite(player.currentSprite(), pixelPos.x, pixelPos.y);
+	// Use ClxDrawSprite ou função equivalente do seu projeto
+	ClxDrawSprite(/*surface*/ nullptr, pixelPos.x, pixelPos.y, player.currentSprite());
 }
 
 // Exemplo de colisão usando pixelPos
