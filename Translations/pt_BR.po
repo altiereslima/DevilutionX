@@ -4906,7 +4906,7 @@ msgstr "Na-Krul"
 #. TRANSLATORS: Quest Name Block end
 #: Source/quests.cpp:76
 msgid "The Jersey's Jersey"
-msgstr "A Camisa de Jersey"
+msgstr "A Fantasia de Jersey"
 
 #. TRANSLATORS: Quest Map
 #: Source/quests.cpp:102
@@ -9314,7 +9314,7 @@ msgstr "Tecelão de Ilusões"
 #: Source/translation_dummy.cpp:42
 msgctxt "monster"
 msgid "Satyr Lord"
-msgstr "Senhor Satyr"
+msgstr "Senhor Sátiro"
 
 #: Source/translation_dummy.cpp:43 Source/translation_dummy.cpp:51
 msgctxt "monster"
@@ -9699,7 +9699,7 @@ msgstr "Ferrão"
 #: Source/translation_dummy.cpp:123
 msgctxt "monster"
 msgid "Psychorb"
-msgstr "Psychorb"
+msgstr "Psicorbe"
 
 #: Source/translation_dummy.cpp:124
 msgctxt "monster"
@@ -9709,7 +9709,7 @@ msgstr "Arachnon"
 #: Source/translation_dummy.cpp:125
 msgctxt "monster"
 msgid "Felltwin"
-msgstr "Felltwin"
+msgstr "Geminígio"
 
 #: Source/translation_dummy.cpp:126
 msgctxt "monster"
@@ -10279,7 +10279,7 @@ msgstr "Sede de Sangue"
 #: Source/translation_dummy.cpp:243
 msgctxt "monster"
 msgid "Webwidow"
-msgstr "Webwidow"
+msgstr "Viúvaranha"
 
 #: Source/translation_dummy.cpp:244
 msgctxt "monster"
