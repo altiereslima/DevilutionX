@@ -1283,34 +1283,31 @@ void SearchAutomapItem(const Surface &out, const Displacement &myPlayerOffset, i
 
 	const int startX = std::clamp(tile.x - searchRadius, 0, MAXDUNX);
 	const int startY = std::clamp(tile.y - searchRadius, 0, MAXDUNY);
+
 	const int endX = std::clamp(tile.x + searchRadius, 0, MAXDUNX);
 	const int endY = std::clamp(tile.y + searchRadius, 0, MAXDUNY);
 
-	const AutomapType mapType = GetAutomapType();
-	const int scale = (mapType == AutomapType::Minimap) ? MinimapScale : AutoMapScale;
+	int scale = (GetAutomapType() == AutomapType::Minimap) ? MinimapScale : AutoMapScale;
 
 	for (int i = startX; i < endX; i++) {
 		for (int j = startY; j < endY; j++) {
 			if (!highlightTile({ i, j }))
 				continue;
 
-			const int px = i - 2 * AutomapOffset.deltaX - ViewPosition.x;
-			const int py = j - 2 * AutomapOffset.deltaY - ViewPosition.y;
+			int px = i - 2 * AutomapOffset.deltaX - ViewPosition.x;
+			int py = j - 2 * AutomapOffset.deltaY - ViewPosition.y;
 
 			Point screen = {
-				(myPlayerOffset.deltaX * scale / 100 / 2) + (px - py) * AmLine(AmLineLength::DoubleTile),
-				(myPlayerOffset.deltaY * scale / 100 / 2) + (px + py) * AmLine(AmLineLength::FullTile),
+				(myPlayerOffset.deltaX * scale / 100 / 2) + (px - py) * AmLine(AmLineLength::DoubleTile) + gnScreenWidth / 2,
+				(myPlayerOffset.deltaY * scale / 100 / 2) + (px + py) * AmLine(AmLineLength::FullTile) + (gnScreenHeight - GetMainPanel().size.height) / 2
 			};
 
-			screen += GetAutomapScreen();
-
-			if (mapType != AutomapType::Minimap && CanPanelsCoverView()) {
+			if (CanPanelsCoverView()) {
 				if (IsRightPanelOpen())
-					screen.x -= gnScreenWidth / 4;
+					screen.x -= 160;
 				if (IsLeftPanelOpen())
-					screen.x += gnScreenWidth / 4;
+					screen.x += 160;
 			}
-
 			screen.y -= AmLine(AmLineLength::FullTile);
 			DrawDiamond(out, screen, MapColorsItem);
 		}
@@ -1532,7 +1529,7 @@ std::unique_ptr<AutomapTile[]> LoadAutomapData(size_t &tileCount)
 } // namespace
 
 bool AutomapActive;
-AutomapType CurrentAutomapType = AutomapType::Minimap;
+AutomapType CurrentAutomapType = AutomapType::Opaque;
 uint8_t AutomapView[DMAXX][DMAXY];
 int AutoMapScale;
 int MinimapScale;
@@ -1785,11 +1782,6 @@ void DrawAutomap(const Surface &out)
 		DrawHorizontalLine(out, MinimapRect.position + Displacement { -2, MinimapRect.size.height }, MinimapRect.size.width + 3, MapColorsDim);
 		DrawVerticalLine(out, MinimapRect.position + Displacement { -2, -1 }, MinimapRect.size.height + 1, MapColorsDim);
 		DrawVerticalLine(out, MinimapRect.position + Displacement { MinimapRect.size.width, -1 }, MinimapRect.size.height + 1, MapColorsDim);
-
-		if (AutoMapShowItems)
-			SearchAutomapItem(out, myPlayerOffset, 8, [](Point position) {
-				return dItem[position.x][position.y] != 0;
-			});
 	}
 
 	Point screen = {};

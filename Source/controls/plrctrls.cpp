@@ -492,66 +492,6 @@ bool IsStandingGround()
 	return false;
 }
 
-void InteractMonster()
-{
-	Player &myPlayer = *MyPlayer;
-	Point position = Monsters[pcursmonst].position.future;
-	bool near = GetMinDistance(position) < 2;
-
-	// talk
-	if (CanTalkToMonst(Monsters[pcursmonst])) {
-		if (!near) {
-			return;
-		}
-		NetSendCmdParam1(true, CMD_ATTACKID, pcursmonst);
-		LastMouseButtonAction = MouseActionType::AttackMonsterTarget;
-		return;
-	}
-
-	// shoot
-	if (myPlayer.UsesRangedWeapon()) {
-		NetSendCmdParam1(true, CMD_RATTACKID, pcursmonst);
-		LastMouseButtonAction = MouseActionType::AttackMonsterTarget;
-		return;
-	}
-
-	// attack
-	if (near) {
-		NetSendCmdParam1(true, CMD_ATTACKID, pcursmonst);
-		LastMouseButtonAction = MouseActionType::AttackMonsterTarget;
-		return;
-	}
-
-	// mock attack
-	NetSendCmdLoc(MyPlayerId, true, CMD_SATTACKXY, position);
-	LastMouseButtonAction = MouseActionType::Attack;
-}
-
-void InteractPlayer()
-{
-	Player &myPlayer = *MyPlayer;
-	Point position = PlayerUnderCursor->position.future;
-	myPlayer._pdir = GetDirection(myPlayer.position.future, position);
-
-	// shoot
-	if (myPlayer.UsesRangedWeapon()) {
-		NetSendCmdParam1(true, CMD_RATTACKPID, PlayerUnderCursor->getId());
-		LastMouseButtonAction = MouseActionType::AttackPlayerTarget;
-		return;
-	}
-
-	// attack
-	if (GetMinDistance(position) < 2) {
-		NetSendCmdParam1(true, CMD_ATTACKPID, PlayerUnderCursor->getId());
-		LastMouseButtonAction = MouseActionType::AttackPlayerTarget;
-		return;
-	}
-
-	// mock attack
-	NetSendCmdLoc(MyPlayerId, true, CMD_SATTACKXY, position);
-	LastMouseButtonAction = MouseActionType::Attack;
-}
-
 void Interact()
 {
 	if (leveltype == DTYPE_TOWN && pcursmonst != -1) {
@@ -559,35 +499,45 @@ void Interact()
 		return;
 	}
 
-	if (pcursmonst != -1) {
-		InteractMonster();
-		return;
-	}
-
 	Player &myPlayer = *MyPlayer;
-	if (leveltype != DTYPE_TOWN && PlayerUnderCursor != nullptr && !myPlayer.friendlyMode) {
-		InteractPlayer();
-		return;
-	}
 
-	if (ObjectUnderCursor != nullptr) {
-		NetSendCmdLoc(MyPlayerId, true, CMD_OPOBJXY, cursPosition);
-		LastMouseButtonAction = MouseActionType::OperateObject;
-		return;
-	}
-
-	// This is triggered only when there is no target.
-	if (leveltype != DTYPE_TOWN) {
+	if (leveltype != DTYPE_TOWN && IsStandingGround()) {
 		Direction pdir = myPlayer._pdir;
 		AxisDirection moveDir = GetMoveDirection();
 		bool motion = moveDir.x != AxisDirectionX_NONE || moveDir.y != AxisDirectionY_NONE;
 		if (motion) {
 			pdir = FaceDir[static_cast<std::size_t>(moveDir.x)][static_cast<std::size_t>(moveDir.y)];
 		}
+
 		Point position = myPlayer.position.tile + pdir;
+		if (pcursmonst != -1 && !motion) {
+			position = Monsters[pcursmonst].position.tile;
+		}
 
 		NetSendCmdLoc(MyPlayerId, true, myPlayer.UsesRangedWeapon() ? CMD_RATTACKXY : CMD_SATTACKXY, position);
 		LastMouseButtonAction = MouseActionType::Attack;
+		return;
+	}
+
+	if (pcursmonst != -1) {
+		if (!myPlayer.UsesRangedWeapon() || CanTalkToMonst(Monsters[pcursmonst])) {
+			NetSendCmdParam1(true, CMD_ATTACKID, pcursmonst);
+		} else {
+			NetSendCmdParam1(true, CMD_RATTACKID, pcursmonst);
+		}
+		LastMouseButtonAction = MouseActionType::AttackMonsterTarget;
+		return;
+	}
+
+	if (leveltype != DTYPE_TOWN && PlayerUnderCursor != nullptr && !myPlayer.friendlyMode) {
+		NetSendCmdParam1(true, myPlayer.UsesRangedWeapon() ? CMD_RATTACKPID : CMD_ATTACKPID, PlayerUnderCursor->getId());
+		LastMouseButtonAction = MouseActionType::AttackPlayerTarget;
+		return;
+	}
+
+	if (ObjectUnderCursor != nullptr) {
+		NetSendCmdLoc(MyPlayerId, true, CMD_OPOBJXY, cursPosition);
+		LastMouseButtonAction = MouseActionType::OperateObject;
 		return;
 	}
 }
@@ -1486,61 +1436,6 @@ bool IsPathBlocked(Point position, Direction dir)
 	return !PosOkPlayer(myPlayer, leftStep) && !PosOkPlayer(myPlayer, rightStep);
 }
 
-Direction GetPathNotBlocked(Point position, Direction dir)
-{
-	Direction d1, d2;
-
-	switch (dir) {
-	case Direction::North:
-		d1 = Direction::NorthWest;
-		d2 = Direction::NorthEast;
-		break;
-	case Direction::East:
-		d1 = Direction::NorthEast;
-		d2 = Direction::SouthEast;
-		break;
-	case Direction::South:
-		d1 = Direction::SouthEast;
-		d2 = Direction::SouthWest;
-		break;
-	case Direction::West:
-		d1 = Direction::SouthWest;
-		d2 = Direction::NorthWest;
-		break;
-	default:
-		return Direction::South; // equivalent to old DIR_OMNI
-	}
-
-	const auto pos1 = position + d1;
-	const auto pos2 = position + d2;
-
-	if (IsTileNotSolid(pos1))
-		return d1;
-	if (IsTileNotSolid(pos2))
-		return d2;
-
-	return Direction::South; // equivalent to old DIR_OMNI
-}
-
-void MoveInDirection(Player &player, Direction dir)
-{
-	Point position = player.position.future;
-	Point delta = position + dir;
-
-	if (!IsTileNotSolid(delta)) {
-		Direction newDir = GetPathNotBlocked(position, dir);
-		if (newDir != Direction::South) { // South used as DIR_OMNI equivalent
-			MoveInDirection(player, newDir);
-			return;
-		}
-	}
-
-	if (PosOkPlayer(player, delta) && IsPathBlocked(position, dir))
-		return; // Don't start backtrack around obstacles
-
-	NetSendCmdLoc(player.getId(), true, CMD_WALKXY, delta);
-}
-
 void WalkInDir(Player &player, AxisDirection dir)
 {
 	if (dir.x == AxisDirectionX_NONE && dir.y == AxisDirectionY_NONE) {
@@ -1550,6 +1445,7 @@ void WalkInDir(Player &player, AxisDirection dir)
 	}
 
 	const Direction pdir = FaceDir[static_cast<std::size_t>(dir.x)][static_cast<std::size_t>(dir.y)];
+	const auto delta = player.position.future + pdir;
 
 	if (!player.isWalking() && player.CanChangeAction())
 		player._pdir = pdir;
@@ -1560,7 +1456,13 @@ void WalkInDir(Player &player, AxisDirection dir)
 		return;
 	}
 
-	MoveInDirection(player, pdir);
+	if (PosOkPlayer(player, delta) && IsPathBlocked(player.position.future, pdir)) {
+		if (player._pmode == PM_STAND)
+			StartStand(player, pdir);
+		return; // Don't start backtrack around obstacles
+	}
+
+	NetSendCmdLoc(player.getId(), true, CMD_WALKXY, delta);
 }
 
 void QuestLogMove(AxisDirection moveDir)

@@ -50,7 +50,7 @@ std::vector<MenuAction> GetMenuActions(const SDL_Event &event)
 			case ControllerButton_BUTTON_B:
 				menuActions.push_back(MenuAction_BACK);
 				break;
-			case ControllerButton_BUTTON_Y:
+			case ControllerButton_BUTTON_X:
 				menuActions.push_back(MenuAction_DELETE);
 				break;
 			case ControllerButton_BUTTON_DPAD_UP:
