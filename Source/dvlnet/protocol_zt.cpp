@@ -1,13 +1,18 @@
 #include "dvlnet/protocol_zt.h"
 
+#include <optional>
 #include <random>
 
+#ifdef USE_SDL3
+#include <SDL3/SDL_error.h>
+#else
 #include <SDL.h>
 
 #ifdef USE_SDL1
 #include "utils/sdl2_to_1_2_backports.h"
 #else
 #include "utils/sdl2_backports.h"
+#endif
 #endif
 
 #include <lwip/igmp.h>
@@ -21,6 +26,31 @@
 
 namespace devilution {
 namespace net {
+
+namespace {
+
+bool GetMAC(const protocol_zt::endpoint &peer, uint64_t &mac)
+{
+	ip6_addr_t address = {};
+	IP6_ADDR_PART(&address, 0, peer.addr[0], peer.addr[1], peer.addr[2], peer.addr[3]);
+	IP6_ADDR_PART(&address, 1, peer.addr[4], peer.addr[5], peer.addr[6], peer.addr[7]);
+	IP6_ADDR_PART(&address, 2, peer.addr[8], peer.addr[9], peer.addr[10], peer.addr[11]);
+	IP6_ADDR_PART(&address, 3, peer.addr[12], peer.addr[13], peer.addr[14], peer.addr[15]);
+
+	const u8_t *hwaddr;
+	if (nd6_get_next_hop_addr_or_queue(netif_default, nullptr, &address, &hwaddr) != ERR_OK)
+		return false;
+
+	mac = hwaddr[0];
+	mac = (mac << 8) | hwaddr[1];
+	mac = (mac << 8) | hwaddr[2];
+	mac = (mac << 8) | hwaddr[3];
+	mac = (mac << 8) | hwaddr[4];
+	mac = (mac << 8) | hwaddr[5];
+	return true;
+}
+
+} // namespace
 
 protocol_zt::protocol_zt()
 {
@@ -52,8 +82,7 @@ tl::expected<bool, PacketError> protocol_zt::network_online()
 	if (!zerotier_network_ready())
 		return false;
 
-	struct sockaddr_in6 in6 {
-	};
+	struct sockaddr_in6 in6 {};
 	in6.sin6_port = htons(default_port);
 	in6.sin6_family = AF_INET6;
 	in6.sin6_addr = in6addr_any;
@@ -63,9 +92,9 @@ tl::expected<bool, PacketError> protocol_zt::network_online()
 		set_reuseaddr(fd_udp);
 		auto ret = lwip_bind(fd_udp, (struct sockaddr *)&in6, sizeof(in6));
 		if (ret < 0) {
-			Log("lwip, (udp) bind: {}", strerror(errno));
-			SDL_SetError("lwip, (udp) bind: %s", strerror(errno));
-			return tl::make_unexpected(ProtocolError());
+			std::string_view format = "Error binding to ZeroTier UDP socket: {}";
+			PacketError error = ProtocolError(format, strerror(errno));
+			return tl::make_unexpected(std::move(error));
 		}
 		set_nonblock(fd_udp);
 	}
@@ -74,20 +103,26 @@ tl::expected<bool, PacketError> protocol_zt::network_online()
 		set_reuseaddr(fd_tcp);
 		auto r1 = lwip_bind(fd_tcp, (struct sockaddr *)&in6, sizeof(in6));
 		if (r1 < 0) {
-			Log("lwip, (tcp) bind: {}", strerror(errno));
-			SDL_SetError("lwip, (udp) bind: %s", strerror(errno));
-			return tl::make_unexpected(ProtocolError());
+			std::string_view format = "Error binding to ZeroTier TCP socket: {}";
+			PacketError error = ProtocolError(format, strerror(errno));
+			return tl::make_unexpected(std::move(error));
 		}
 		auto r2 = lwip_listen(fd_tcp, 10);
 		if (r2 < 0) {
-			Log("lwip, listen: {}", strerror(errno));
-			SDL_SetError("lwip, listen: %s", strerror(errno));
-			return tl::make_unexpected(ProtocolError());
+			std::string_view format = "Error listening on ZeroTier TCP socket: {}";
+			PacketError error = ProtocolError(format, strerror(errno));
+			return tl::make_unexpected(std::move(error));
 		}
 		set_nonblock(fd_tcp);
 		set_nodelay(fd_tcp);
 	}
 	return true;
+}
+
+tl::expected<bool, PacketError> protocol_zt::peers_ready()
+{
+	return network_online()
+	    .map([&](bool isOnline) { return isOnline && zerotier_peers_ready(); });
 }
 
 tl::expected<void, PacketError> protocol_zt::send(const endpoint &peer, const buffer_t &data)
@@ -101,8 +136,7 @@ tl::expected<void, PacketError> protocol_zt::send(const endpoint &peer, const bu
 
 bool protocol_zt::send_oob(const endpoint &peer, const buffer_t &data) const
 {
-	struct sockaddr_in6 in6 {
-	};
+	struct sockaddr_in6 in6 {};
 	in6.sin6_port = htons(default_port);
 	in6.sin6_family = AF_INET6;
 	std::copy(peer.addr.begin(), peer.addr.end(), in6.sin6_addr.s6_addr);
@@ -124,8 +158,7 @@ tl::expected<bool, PacketError> protocol_zt::send_queued_peer(const endpoint &pe
 		state.fd = lwip_socket(AF_INET6, SOCK_STREAM, 0);
 		set_nodelay(state.fd);
 		set_nonblock(state.fd);
-		struct sockaddr_in6 in6 {
-		};
+		struct sockaddr_in6 in6 {};
 		in6.sin6_port = htons(default_port);
 		in6.sin6_family = AF_INET6;
 		std::copy(peer.addr.begin(), peer.addr.end(), in6.sin6_addr.s6_addr);
@@ -147,7 +180,9 @@ tl::expected<bool, PacketError> protocol_zt::send_queued_peer(const endpoint &pe
 		if (decltype(len)(r) == len) {
 			state.send_queue.pop_front();
 		} else {
-			return tl::make_unexpected(ProtocolError());
+			std::string_view format = "Impossible number of bytes sent: {} available, {} sent";
+			PacketError error = ProtocolError(format, len, decltype(len)(r));
+			return tl::make_unexpected(std::move(error));
 		}
 	}
 	return true;
@@ -197,8 +232,7 @@ bool protocol_zt::recv_from_peers()
 bool protocol_zt::recv_from_udp()
 {
 	unsigned char buf[PKTBUF_LEN];
-	struct sockaddr_in6 in6 {
-	};
+	struct sockaddr_in6 in6 {};
 	socklen_t addrlen = sizeof(in6);
 	auto len = lwip_recvfrom(fd_udp, buf, sizeof(buf), 0, (struct sockaddr *)&in6, &addrlen);
 	if (len < 0)
@@ -212,8 +246,7 @@ bool protocol_zt::recv_from_udp()
 
 bool protocol_zt::accept_all()
 {
-	struct sockaddr_in6 in6 {
-	};
+	struct sockaddr_in6 in6 {};
 	socklen_t addrlen = sizeof(in6);
 	while (true) {
 		auto newfd = lwip_accept(fd_tcp, (struct sockaddr *)&in6, &addrlen);
@@ -336,25 +369,20 @@ bool protocol_zt::is_peer_connected(endpoint &peer)
 	return it != peer_list.end() && it->second.fd != -1;
 }
 
-bool protocol_zt::is_peer_relayed(const endpoint &peer) const
+std::optional<bool> protocol_zt::is_peer_relayed(const endpoint &peer) const
 {
-	ip6_addr_t address = {};
-	IP6_ADDR_PART(&address, 0, peer.addr[0], peer.addr[1], peer.addr[2], peer.addr[3]);
-	IP6_ADDR_PART(&address, 1, peer.addr[4], peer.addr[5], peer.addr[6], peer.addr[7]);
-	IP6_ADDR_PART(&address, 2, peer.addr[8], peer.addr[9], peer.addr[10], peer.addr[11]);
-	IP6_ADDR_PART(&address, 3, peer.addr[12], peer.addr[13], peer.addr[14], peer.addr[15]);
-
-	const u8_t *hwaddr;
-	if (nd6_get_next_hop_addr_or_queue(netif_default, nullptr, &address, &hwaddr) != ERR_OK)
-		return true;
-
-	uint64_t mac = hwaddr[0];
-	mac = (mac << 8) | hwaddr[1];
-	mac = (mac << 8) | hwaddr[2];
-	mac = (mac << 8) | hwaddr[3];
-	mac = (mac << 8) | hwaddr[4];
-	mac = (mac << 8) | hwaddr[5];
+	uint64_t mac;
+	if (!GetMAC(peer, mac))
+		return std::nullopt;
 	return zerotier_is_relayed(mac);
+}
+
+std::optional<int> protocol_zt::get_latency_to(const endpoint &peer) const
+{
+	uint64_t mac;
+	if (!GetMAC(peer, mac))
+		return std::nullopt;
+	return zerotier_latency(mac);
 }
 
 std::string protocol_zt::make_default_gamename()

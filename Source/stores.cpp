@@ -12,6 +12,7 @@
 #include <fmt/format.h>
 
 #include "controls/control_mode.hpp"
+#include "controls/local_coop.hpp"
 #include "controls/plrctrls.h"
 #include "cursor.h"
 #include "engine/backbuffer_state.hpp"
@@ -26,6 +27,7 @@
 #include "options.h"
 #include "panels/info_box.hpp"
 #include "qol/stash.h"
+#include "townerdat.hpp"
 #include "towners.h"
 #include "utils/format_int.hpp"
 #include "utils/language.h"
@@ -40,14 +42,14 @@ int CurrentItemIndex;
 int8_t PlayerItemIndexes[48];
 Item PlayerItems[48];
 
-Item SmithItems[NumSmithBasicItemsHf];
+StaticVector<Item, NumSmithBasicItemsHf> SmithItems;
 int PremiumItemCount;
 int PremiumItemLevel;
-Item PremiumItems[NumSmithItemsHf];
+StaticVector<Item, NumSmithItemsHf> PremiumItems;
 
-Item HealerItems[20];
+StaticVector<Item, NumHealerItemsHf> HealerItems;
 
-Item WitchItems[NumWitchItemsHf];
+StaticVector<Item, NumWitchItemsHf> WitchItems;
 
 int BoyItemLevel;
 Item BoyItem;
@@ -176,6 +178,22 @@ int TextHeight()
 	return IsSmallFontTall() ? LargeTextHeight : SmallTextHeight;
 }
 
+/**
+ * @brief Get the player who is currently using the store.
+ *
+ * In local co-op, returns the player who initiated the store interaction.
+ * Otherwise, returns MyPlayer.
+ */
+Player &GetStorePlayer()
+{
+	if (IsLocalCoopStoreActive()) {
+		uint8_t playerId = GetLocalCoopStoreOwnerPlayerId();
+		if (playerId < Players.size())
+			return Players[playerId];
+	}
+	return *MyPlayer;
+}
+
 void CalculateLineHeights()
 {
 	TextLine[0].y = 0;
@@ -206,7 +224,7 @@ void DrawSSlider(const Surface &out, int y1, int y2)
 {
 	const Point uiPosition = GetUIRectangle().position;
 	int yd1 = y1 * 12 + 44 + uiPosition.y;
-	int yd2 = y2 * 12 + 44 + uiPosition.y;
+	const int yd2 = y2 * 12 + 44 + uiPosition.y;
 	if (CountdownScrollUp != -1)
 		ClxDraw(out, { uiPosition.x + 601, yd1 }, (*pSTextSlidCels)[11]);
 	else
@@ -269,7 +287,7 @@ void AddOptionsBackButton()
 void AddItemListBackButton(bool selectable = false)
 {
 	const int line = BackButtonLine();
-	std::string_view text = _("Back");
+	const std::string_view text = _("Back");
 	if (!selectable && IsSmallFontTall()) {
 		AddSText(0, line, text, UiFlags::ColorWhite | UiFlags::AlignRight, selectable);
 	} else {
@@ -337,7 +355,7 @@ void PrintStoreItem(const Item &item, int l, UiFlags flags, bool cursIndent = fa
 
 bool StoreAutoPlace(Item &item, bool persistItem)
 {
-	Player &player = *MyPlayer;
+	Player &player = GetStorePlayer();
 
 	if (AutoEquipEnabled(player, item) && AutoEquip(player, item, persistItem, true)) {
 		return true;
@@ -354,22 +372,18 @@ bool StoreAutoPlace(Item &item, bool persistItem)
 	return CanFitItemInInventory(player, item);
 }
 
-void ScrollVendorStore(Item *itemData, int storeLimit, int idx, int selling = true)
+void ScrollVendorStore(std::span<Item> itemData, int storeLimit, int idx, int selling = true)
 {
 	ClearSText(5, 21);
 	PreviousScrollPos = 5;
 
 	for (int l = 5; l < 20 && idx < storeLimit; l += 4) {
 		const Item &item = itemData[idx];
-		if (!item.isEmpty()) {
-			UiFlags itemColor = item.getTextColorWithStatCheck();
-			AddSText(20, l, item.getName(), itemColor, true, item._iCurs, true);
-			AddSTextVal(l, item._iIdentified ? item._iIvalue : item._ivalue);
-			PrintStoreItem(item, l + 1, itemColor, true);
-			NextScrollPos = l;
-		} else {
-			l -= 4;
-		}
+		const UiFlags itemColor = item.getTextColorWithStatCheck();
+		AddSText(20, l, item.getName(), itemColor, true, item._iCurs, true);
+		AddSTextVal(l, item._iIdentified ? item._iIvalue : item._ivalue);
+		PrintStoreItem(item, l + 1, itemColor, true);
+		NextScrollPos = l;
 		idx++;
 	}
 	if (selling) {
@@ -399,12 +413,12 @@ void StartSmith()
 
 void ScrollSmithBuy(int idx)
 {
-	ScrollVendorStore(SmithItems, static_cast<int>(std::size(SmithItems)), idx);
+	ScrollVendorStore(SmithItems, static_cast<int>(SmithItems.size()), idx);
 }
 
 uint32_t TotalPlayerGold()
 {
-	return MyPlayer->_pGold + Stash.gold;
+	return GetStorePlayer()._pGold + Stash.gold;
 }
 
 // TODO: Change `_iIvalue` to be unsigned instead of passing `int` here.
@@ -427,10 +441,7 @@ void StartSmithBuy()
 
 	CurrentItemIndex = 0;
 	for (Item &item : SmithItems) {
-		if (item.isEmpty())
-			continue;
-
-		item._iStatFlag = MyPlayer->CanUseItem(item);
+		item._iStatFlag = GetStorePlayer().CanUseItem(item);
 		CurrentItemIndex++;
 	}
 
@@ -445,17 +456,14 @@ void ScrollSmithPremiumBuy(int boughtitems)
 			boughtitems--;
 	}
 
-	ScrollVendorStore(PremiumItems, static_cast<int>(std::size(PremiumItems)), idx);
+	ScrollVendorStore(PremiumItems, static_cast<int>(PremiumItems.size()), idx);
 }
 
 bool StartSmithPremiumBuy()
 {
 	CurrentItemIndex = 0;
 	for (Item &item : PremiumItems) {
-		if (item.isEmpty())
-			continue;
-
-		item._iStatFlag = MyPlayer->CanUseItem(item);
+		item._iStatFlag = GetStorePlayer().CanUseItem(item);
 		CurrentItemIndex++;
 	}
 	if (CurrentItemIndex == 0) {
@@ -485,9 +493,9 @@ bool SmithSellOk(int i)
 	Item *pI;
 
 	if (i >= 0) {
-		pI = &MyPlayer->InvList[i];
+		pI = &GetStorePlayer().InvList[i];
 	} else {
-		pI = &MyPlayer->SpdList[-(i + 1)];
+		pI = &GetStorePlayer().SpdList[-(i + 1)];
 	}
 
 	if (pI->isEmpty())
@@ -525,7 +533,7 @@ void StartSmithSell()
 		item.clear();
 	}
 
-	const Player &myPlayer = *MyPlayer;
+	const Player &myPlayer = GetStorePlayer();
 
 	for (int8_t i = 0; i < myPlayer._pNumInv; i++) {
 		if (CurrentItemIndex >= 48)
@@ -584,7 +592,7 @@ void StartSmithSell()
 
 bool SmithRepairOk(int i)
 {
-	const Player &myPlayer = *MyPlayer;
+	const Player &myPlayer = GetStorePlayer();
 	const Item &item = myPlayer.InvList[i];
 
 	if (item.isEmpty())
@@ -610,7 +618,7 @@ void StartSmithRepair()
 		item.clear();
 	}
 
-	Player &myPlayer = *MyPlayer;
+	Player &myPlayer = GetStorePlayer();
 
 	auto &helmet = myPlayer.InvBody[INVLOC_HEAD];
 	if (!helmet.isEmpty() && helmet._iDurability != helmet._iMaxDur) {
@@ -667,7 +675,7 @@ void FillManaPlayer()
 	if (!*GetOptions().Gameplay.adriaRefillsMana)
 		return;
 
-	Player &myPlayer = *MyPlayer;
+	Player &myPlayer = GetStorePlayer();
 
 	if (myPlayer._pMana != myPlayer._pMaxMana) {
 		PlaySFX(SfxID::CastHealing);
@@ -695,7 +703,7 @@ void StartWitch()
 
 void ScrollWitchBuy(int idx)
 {
-	ScrollVendorStore(WitchItems, static_cast<int>(std::size(WitchItems)), idx);
+	ScrollVendorStore(WitchItems, static_cast<int>(WitchItems.size()), idx);
 }
 
 void WitchBookLevel(Item &bookItem)
@@ -703,7 +711,7 @@ void WitchBookLevel(Item &bookItem)
 	if (bookItem._iMiscId != IMISC_BOOK)
 		return;
 	bookItem._iMinMag = GetSpellData(bookItem._iSpell).minInt;
-	uint8_t spellLevel = MyPlayer->_pSplLvl[static_cast<int8_t>(bookItem._iSpell)];
+	uint8_t spellLevel = GetStorePlayer()._pSplLvl[static_cast<int8_t>(bookItem._iSpell)];
 	while (spellLevel > 0) {
 		bookItem._iMinMag += 20 * bookItem._iMinMag / 100;
 		spellLevel--;
@@ -729,11 +737,8 @@ void StartWitchBuy()
 
 	CurrentItemIndex = 0;
 	for (Item &item : WitchItems) {
-		if (item.isEmpty())
-			continue;
-
 		WitchBookLevel(item);
-		item._iStatFlag = MyPlayer->CanUseItem(item);
+		item._iStatFlag = GetStorePlayer().CanUseItem(item);
 		CurrentItemIndex++;
 	}
 	NumTextLines = std::max(CurrentItemIndex - 4, 0);
@@ -746,9 +751,9 @@ bool WitchSellOk(int i)
 	bool rv = false;
 
 	if (i >= 0)
-		pI = &MyPlayer->InvList[i];
+		pI = &GetStorePlayer().InvList[i];
 	else
-		pI = &MyPlayer->SpdList[-(i + 1)];
+		pI = &GetStorePlayer().SpdList[-(i + 1)];
 
 	if (pI->_itype == ItemType::Misc)
 		rv = true;
@@ -775,7 +780,7 @@ void StartWitchSell()
 		item.clear();
 	}
 
-	const Player &myPlayer = *MyPlayer;
+	const Player &myPlayer = GetStorePlayer();
 
 	for (int i = 0; i < myPlayer._pNumInv; i++) {
 		if (CurrentItemIndex >= 48)
@@ -835,7 +840,7 @@ void StartWitchSell()
 
 bool WitchRechargeOk(int i)
 {
-	const auto &item = MyPlayer->InvList[i];
+	const auto &item = GetStorePlayer().InvList[i];
 
 	if (item._itype == ItemType::Staff && item._iCharges != item._iMaxCharges) {
 		return true;
@@ -868,7 +873,7 @@ void StartWitchRecharge()
 		item.clear();
 	}
 
-	const Player &myPlayer = *MyPlayer;
+	const Player &myPlayer = GetStorePlayer();
 	const auto &leftHand = myPlayer.InvBody[INVLOC_HAND_LEFT];
 
 	if ((leftHand._itype == ItemType::Staff || leftHand._iMiscId == IMISC_UNIQUE) && leftHand._iCharges != leftHand._iMaxCharges) {
@@ -930,7 +935,7 @@ void StoreConfirm(Item &item)
 	HasScrollbar = false;
 	ClearSText(5, 23);
 
-	UiFlags itemColor = item.getTextColorWithStatCheck();
+	const UiFlags itemColor = item.getTextColorWithStatCheck();
 	AddSText(20, 8, item.getName(), itemColor, false);
 	AddSTextVal(8, item._iIvalue);
 	PrintStoreItem(item, 9, itemColor);
@@ -996,8 +1001,8 @@ void SStartBoyBuy()
 	AddSText(20, 1, _("I have this item for sale:"), UiFlags::ColorWhitegold, false);
 	AddSLine(3);
 
-	BoyItem._iStatFlag = MyPlayer->CanUseItem(BoyItem);
-	UiFlags itemColor = BoyItem.getTextColorWithStatCheck();
+	BoyItem._iStatFlag = GetStorePlayer().CanUseItem(BoyItem);
+	const UiFlags itemColor = BoyItem.getTextColorWithStatCheck();
 	AddSText(20, 10, BoyItem.getName(), itemColor, true, BoyItem._iCurs, true);
 	if (gbIsHellfire)
 		AddSTextVal(10, BoyItem._iIvalue - (BoyItem._iIvalue / 4));
@@ -1017,7 +1022,7 @@ void SStartBoyBuy()
 
 void HealPlayer()
 {
-	Player &myPlayer = *MyPlayer;
+	Player &myPlayer = GetStorePlayer();
 
 	if (myPlayer._pHitPoints != myPlayer._pMaxHP) {
 		PlaySFX(SfxID::CastHealing);
@@ -1044,7 +1049,7 @@ void StartHealer()
 
 void ScrollHealerBuy(int idx)
 {
-	ScrollVendorStore(HealerItems, static_cast<int>(std::size(HealerItems)), idx);
+	ScrollVendorStore(HealerItems, static_cast<int>(HealerItems.size()), idx);
 }
 
 void StartHealerBuy()
@@ -1062,10 +1067,7 @@ void StartHealerBuy()
 
 	CurrentItemIndex = 0;
 	for (Item &item : HealerItems) {
-		if (item.isEmpty())
-			continue;
-
-		item._iStatFlag = MyPlayer->CanUseItem(item);
+		item._iStatFlag = GetStorePlayer().CanUseItem(item);
 		CurrentItemIndex++;
 	}
 
@@ -1114,7 +1116,7 @@ void StartStorytellerIdentify()
 		item.clear();
 	}
 
-	Player &myPlayer = *MyPlayer;
+	Player &myPlayer = GetStorePlayer();
 
 	auto &helmet = myPlayer.InvBody[INVLOC_HEAD];
 	if (IdItemOk(&helmet)) {
@@ -1196,7 +1198,7 @@ void StartStorytellerIdentifyShow(Item &item)
 	HasScrollbar = false;
 	ClearSText(5, 23);
 
-	UiFlags itemColor = item.getTextColorWithStatCheck();
+	const UiFlags itemColor = item.getTextColorWithStatCheck();
 
 	AddSText(0, 7, _("This item is:"), UiFlags::ColorWhite | UiFlags::AlignCenter, false);
 	AddSText(20, 11, item.getName(), itemColor, false);
@@ -1223,7 +1225,7 @@ void StartTalk()
 
 	int sn = 0;
 	for (auto &quest : Quests) {
-		if (quest._qactive == QUEST_ACTIVE && QuestDialogTable[TownerId][quest._qidx] != TEXT_NONE && quest._qlog)
+		if (quest._qactive == QUEST_ACTIVE && GetTownerQuestDialog(TownerId, quest._qidx) != TEXT_NONE && quest._qlog)
 			sn++;
 	}
 
@@ -1235,10 +1237,10 @@ void StartTalk()
 		la = 2;
 	}
 
-	int sn2 = sn - 2;
+	const int sn2 = sn - 2;
 
 	for (auto &quest : Quests) {
-		if (quest._qactive == QUEST_ACTIVE && QuestDialogTable[TownerId][quest._qidx] != TEXT_NONE && quest._qlog) {
+		if (quest._qactive == QUEST_ACTIVE && GetTownerQuestDialog(TownerId, quest._qidx) != TEXT_NONE && quest._qlog) {
 			AddSText(0, sn, _(QuestsData[quest._qidx]._qlstr), UiFlags::ColorWhite | UiFlags::AlignCenter, true);
 			sn += la;
 		}
@@ -1308,6 +1310,7 @@ void SmithEnter()
 		break;
 	case 20:
 		ActiveStore = TalkID::None;
+		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -1322,15 +1325,8 @@ void SmithBuyItem(Item &item)
 		item._iIdentified = false;
 	StoreAutoPlace(item, true);
 	int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
-	if (idx == NumSmithBasicItemsHf - 1) {
-		SmithItems[NumSmithBasicItemsHf - 1].clear();
-	} else {
-		for (; !SmithItems[idx + 1].isEmpty(); idx++) {
-			SmithItems[idx] = std::move(SmithItems[idx + 1]);
-		}
-		SmithItems[idx].clear();
-	}
-	CalcPlrInv(*MyPlayer, true);
+	SmithItems.erase(SmithItems.begin() + idx);
+	CalcPlrInv(GetStorePlayer(), true);
 }
 
 void SmithBuyEnter()
@@ -1345,7 +1341,7 @@ void SmithBuyEnter()
 	OldScrollPos = ScrollPos;
 	OldActiveStore = TalkID::SmithBuy;
 
-	int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
+	const int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
 	if (!PlayerCanAfford(SmithItems[idx]._iIvalue)) {
 		StartStore(TalkID::NoMoney);
 		return;
@@ -1371,17 +1367,7 @@ void SmithBuyPItem(Item &item)
 	StoreAutoPlace(item, true);
 
 	int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
-	int xx = 0;
-	for (int i = 0; idx >= 0; i++) {
-		if (!PremiumItems[i].isEmpty()) {
-			idx--;
-			xx = i;
-		}
-	}
-
-	PremiumItems[xx].clear();
-	PremiumItemCount--;
-	SpawnPremium(*MyPlayer);
+	ReplacePremium(GetStorePlayer(), idx);
 }
 
 void SmithPremiumBuyEnter()
@@ -1396,14 +1382,7 @@ void SmithPremiumBuyEnter()
 	OldTextLine = CurrentTextLine;
 	OldScrollPos = ScrollPos;
 
-	int xx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
-	int idx = 0;
-	for (int i = 0; xx >= 0; i++) {
-		if (!PremiumItems[i].isEmpty()) {
-			xx--;
-			idx = i;
-		}
-	}
+	int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
 
 	if (!PlayerCanAfford(PremiumItems[idx]._iIvalue)) {
 		StartStore(TalkID::NoMoney);
@@ -1421,10 +1400,10 @@ void SmithPremiumBuyEnter()
 
 bool StoreGoldFit(Item &item)
 {
-	int cost = item._iIvalue;
+	const int cost = item._iIvalue;
 
-	Size itemSize = GetInventorySize(item);
-	int itemRoomForGold = itemSize.width * itemSize.height * MaxGold;
+	const Size itemSize = GetInventorySize(item);
+	const int itemRoomForGold = itemSize.width * itemSize.height * MaxGold;
 
 	if (cost <= itemRoomForGold) {
 		return true;
@@ -1438,7 +1417,7 @@ bool StoreGoldFit(Item &item)
  */
 void StoreSellItem()
 {
-	Player &myPlayer = *MyPlayer;
+	Player &myPlayer = GetStorePlayer();
 
 	int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
 	if (PlayerItemIndexes[idx] >= 0)
@@ -1446,7 +1425,7 @@ void StoreSellItem()
 	else
 		myPlayer.RemoveSpdBarItem(-(PlayerItemIndexes[idx] + 1));
 
-	int cost = PlayerItems[idx]._iIvalue;
+	const int cost = PlayerItems[idx]._iIvalue;
 	CurrentItemIndex--;
 	if (idx != CurrentItemIndex) {
 		while (idx < CurrentItemIndex) {
@@ -1473,7 +1452,7 @@ void SmithSellEnter()
 	OldActiveStore = TalkID::SmithSell;
 	OldScrollPos = ScrollPos;
 
-	int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
+	const int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
 
 	if (!StoreGoldFit(PlayerItems[idx])) {
 		StartStore(TalkID::NoRoom);
@@ -1489,12 +1468,12 @@ void SmithSellEnter()
  */
 void SmithRepairItem(int price)
 {
-	int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
+	const int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
 	PlayerItems[idx]._iDurability = PlayerItems[idx]._iMaxDur;
 
-	int8_t i = PlayerItemIndexes[idx];
+	const int8_t i = PlayerItemIndexes[idx];
 
-	Player &myPlayer = *MyPlayer;
+	Player &myPlayer = GetStorePlayer();
 
 	if (i < 0) {
 		if (i == -1)
@@ -1525,7 +1504,7 @@ void SmithRepairEnter()
 	OldTextLine = CurrentTextLine;
 	OldScrollPos = ScrollPos;
 
-	int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
+	const int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
 
 	if (!PlayerCanAfford(PlayerItems[idx]._iIvalue)) {
 		StartStore(TalkID::NoMoney);
@@ -1556,6 +1535,7 @@ void WitchEnter()
 		break;
 	case 20:
 		ActiveStore = TalkID::None;
+		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -1574,17 +1554,10 @@ void WitchBuyItem(Item &item)
 	StoreAutoPlace(item, true);
 
 	if (idx >= 3) {
-		if (idx == NumWitchItemsHf - 1) {
-			WitchItems[NumWitchItemsHf - 1].clear();
-		} else {
-			for (; !WitchItems[idx + 1].isEmpty(); idx++) {
-				WitchItems[idx] = std::move(WitchItems[idx + 1]);
-			}
-			WitchItems[idx].clear();
-		}
+		WitchItems.erase(WitchItems.begin() + idx);
 	}
 
-	CalcPlrInv(*MyPlayer, true);
+	CalcPlrInv(GetStorePlayer(), true);
 }
 
 void WitchBuyEnter()
@@ -1599,7 +1572,7 @@ void WitchBuyEnter()
 	OldScrollPos = ScrollPos;
 	OldActiveStore = TalkID::WitchBuy;
 
-	int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
+	const int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
 
 	if (!PlayerCanAfford(WitchItems[idx]._iIvalue)) {
 		StartStore(TalkID::NoMoney);
@@ -1627,7 +1600,7 @@ void WitchSellEnter()
 	OldActiveStore = TalkID::WitchSell;
 	OldScrollPos = ScrollPos;
 
-	int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
+	const int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
 
 	if (!StoreGoldFit(PlayerItems[idx])) {
 		StartStore(TalkID::NoRoom);
@@ -1643,12 +1616,12 @@ void WitchSellEnter()
  */
 void WitchRechargeItem(int price)
 {
-	int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
+	const int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
 	PlayerItems[idx]._iCharges = PlayerItems[idx]._iMaxCharges;
 
-	Player &myPlayer = *MyPlayer;
+	Player &myPlayer = GetStorePlayer();
 
-	int8_t i = PlayerItemIndexes[idx];
+	const int8_t i = PlayerItemIndexes[idx];
 	if (i < 0) {
 		myPlayer.InvBody[INVLOC_HAND_LEFT]._iCharges = myPlayer.InvBody[INVLOC_HAND_LEFT]._iMaxCharges;
 		NetSendCmdChItem(true, INVLOC_HAND_LEFT);
@@ -1673,7 +1646,7 @@ void WitchRechargeEnter()
 	OldTextLine = CurrentTextLine;
 	OldScrollPos = ScrollPos;
 
-	int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
+	const int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
 
 	if (!PlayerCanAfford(PlayerItems[idx]._iIvalue)) {
 		StartStore(TalkID::NoMoney);
@@ -1701,6 +1674,7 @@ void BoyEnter()
 
 	if ((CurrentTextLine != 8 && !BoyItem.isEmpty()) || (CurrentTextLine != 12 && BoyItem.isEmpty())) {
 		ActiveStore = TalkID::None;
+		ClearLocalCoopStoreOwner();
 		return;
 	}
 
@@ -1716,7 +1690,7 @@ void BoyBuyItem(Item &item, int itemPrice)
 	StoreAutoPlace(item, true);
 	item.clear();
 	OldActiveStore = TalkID::Boy;
-	CalcPlrInv(*MyPlayer, true);
+	CalcPlrInv(GetStorePlayer(), true);
 	OldTextLine = 12;
 }
 
@@ -1747,21 +1721,15 @@ void HealerBuyItem(Item &item)
 			return;
 	}
 	idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
-	if (idx == 19) {
-		HealerItems[19].clear();
-	} else {
-		for (; !HealerItems[idx + 1].isEmpty(); idx++) {
-			HealerItems[idx] = std::move(HealerItems[idx + 1]);
-		}
-		HealerItems[idx].clear();
-	}
-	CalcPlrInv(*MyPlayer, true);
+	HealerItems.erase(HealerItems.begin() + idx);
+	CalcPlrInv(GetStorePlayer(), true);
 }
 
 void BoyBuyEnter()
 {
 	if (CurrentTextLine != 10) {
 		ActiveStore = TalkID::None;
+		ClearLocalCoopStoreOwner();
 		return;
 	}
 
@@ -1791,9 +1759,9 @@ void BoyBuyEnter()
 
 void StorytellerIdentifyItem(Item &item)
 {
-	Player &myPlayer = *MyPlayer;
+	Player &myPlayer = GetStorePlayer();
 
-	int8_t idx = PlayerItemIndexes[((OldTextLine - PreviousScrollPos) / 4) + OldScrollPos];
+	const int8_t idx = PlayerItemIndexes[((OldTextLine - PreviousScrollPos) / 4) + OldScrollPos];
 	if (idx < 0) {
 		if (idx == -1)
 			myPlayer.InvBody[INVLOC_HEAD]._iIdentified = true;
@@ -1882,6 +1850,7 @@ void HealerEnter()
 		break;
 	case 18:
 		ActiveStore = TalkID::None;
+		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -1898,7 +1867,7 @@ void HealerBuyEnter()
 	OldScrollPos = ScrollPos;
 	OldActiveStore = TalkID::HealerBuy;
 
-	int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
+	const int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
 
 	if (!PlayerCanAfford(HealerItems[idx]._iIvalue)) {
 		StartStore(TalkID::NoMoney);
@@ -1928,6 +1897,7 @@ void StorytellerEnter()
 		break;
 	case 18:
 		ActiveStore = TalkID::None;
+		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -1944,7 +1914,7 @@ void StorytellerIdentifyEnter()
 	OldTextLine = CurrentTextLine;
 	OldScrollPos = ScrollPos;
 
-	int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
+	const int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
 
 	if (!PlayerCanAfford(PlayerItems[idx]._iIvalue)) {
 		StartStore(TalkID::NoMoney);
@@ -1965,7 +1935,7 @@ void TalkEnter()
 
 	int sn = 0;
 	for (auto &quest : Quests) {
-		if (quest._qactive == QUEST_ACTIVE && QuestDialogTable[TownerId][quest._qidx] != TEXT_NONE && quest._qlog)
+		if (quest._qactive == QUEST_ACTIVE && GetTownerQuestDialog(TownerId, quest._qidx) != TEXT_NONE && quest._qlog)
 			sn++;
 	}
 	int la = 2;
@@ -1984,9 +1954,9 @@ void TalkEnter()
 	}
 
 	for (auto &quest : Quests) {
-		if (quest._qactive == QUEST_ACTIVE && QuestDialogTable[TownerId][quest._qidx] != TEXT_NONE && quest._qlog) {
+		if (quest._qactive == QUEST_ACTIVE && GetTownerQuestDialog(TownerId, quest._qidx) != TEXT_NONE && quest._qlog) {
 			if (sn == CurrentTextLine) {
-				InitQTextMsg(QuestDialogTable[TownerId][quest._qidx]);
+				InitQTextMsg(GetTownerQuestDialog(TownerId, quest._qidx));
 			}
 			sn += la;
 		}
@@ -2004,6 +1974,7 @@ void TavernEnter()
 		break;
 	case 18:
 		ActiveStore = TalkID::None;
+		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -2019,6 +1990,7 @@ void BarmaidEnter()
 		break;
 	case 14:
 		ActiveStore = TalkID::None;
+		ClearLocalCoopStoreOwner();
 		IsStashOpen = true;
 		Stash.RefreshItemStatFlags();
 		invflag = true;
@@ -2030,6 +2002,7 @@ void BarmaidEnter()
 		break;
 	case 18:
 		ActiveStore = TalkID::None;
+		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -2045,6 +2018,7 @@ void DrunkEnter()
 		break;
 	case 18:
 		ActiveStore = TalkID::None;
+		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -2072,7 +2046,7 @@ int TakeGold(Player &player, int cost, bool skipMaxPiles)
 
 void DrawSelector(const Surface &out, const Rectangle &rect, std::string_view text, UiFlags flags)
 {
-	int lineWidth = GetLineWidth(text);
+	const int lineWidth = GetLineWidth(text);
 
 	int x1 = rect.position.x - 20;
 	if (HasAnyOf(flags, UiFlags::AlignCenter))
@@ -2097,7 +2071,7 @@ void AddStoreHoldRepair(Item *itm, int8_t i)
 	item = &PlayerItems[CurrentItemIndex];
 	PlayerItems[CurrentItemIndex] = *itm;
 
-	int due = item->_iMaxDur - item->_iDurability;
+	const int due = item->_iMaxDur - item->_iDurability;
 	if (item->_iMagical != ITEM_QUALITY_NORMAL && item->_iIdentified) {
 		v = 30 * item->_iIvalue * due / (item->_iMaxDur * 100 * 2);
 		if (v == 0)
@@ -2116,13 +2090,16 @@ void InitStores()
 {
 	ClearSText(0, NumStoreLines);
 	ActiveStore = TalkID::None;
+	ClearLocalCoopStoreOwner();
 	IsTextFullSize = false;
 	HasScrollbar = false;
 	PremiumItemCount = 0;
 	PremiumItemLevel = 1;
 
-	for (auto &premiumitem : PremiumItems)
-		premiumitem.clear();
+	SmithItems.clear();
+	WitchItems.clear();
+	HealerItems.clear();
+	PremiumItems.clear();
 
 	BoyItem.clear();
 	BoyItemLevel = 0;
@@ -2130,7 +2107,7 @@ void InitStores()
 
 void SetupTownStores()
 {
-	Player &myPlayer = *MyPlayer;
+	const Player &myPlayer = GetStorePlayer();
 
 	int l = myPlayer.getCharacterLevel() / 2;
 	if (!gbIsMultiplayer) {
@@ -2155,6 +2132,7 @@ void FreeStoreMem()
 		FreeHalfSizeItemSprites();
 	}
 	ActiveStore = TalkID::None;
+	ClearLocalCoopStoreOwner();
 	for (STextStruct &entry : TextLine) {
 		entry.text.clear();
 		entry.text.shrink_to_fit();
@@ -2271,12 +2249,7 @@ void StartStore(TalkID s)
 		StartSmith();
 		break;
 	case TalkID::SmithBuy: {
-		bool hasAnyItems = false;
-		for (int i = 0; !SmithItems[i].isEmpty(); i++) {
-			hasAnyItems = true;
-			break;
-		}
-		if (hasAnyItems)
+		if (!SmithItems.empty())
 			StartSmithBuy();
 		else {
 			ActiveStore = TalkID::SmithBuy;
@@ -2437,6 +2410,8 @@ void StoreESC()
 	case TalkID::Drunk:
 	case TalkID::Barmaid:
 		ActiveStore = TalkID::None;
+		// Clear local co-op store owner when exiting store
+		ClearLocalCoopStoreOwner();
 		break;
 	case TalkID::Gossip:
 		StartStore(OldActiveStore);
@@ -2596,7 +2571,7 @@ void StoreNext()
 
 void TakePlrsMoney(int cost)
 {
-	Player &myPlayer = *MyPlayer;
+	Player &myPlayer = GetStorePlayer();
 
 	myPlayer._pGold -= std::min(cost, myPlayer._pGold);
 
@@ -2722,7 +2697,7 @@ void CheckStoreBtn()
 
 		if (HasScrollbar && MousePosition.x > 600 + uiPosition.x) {
 			// Scroll bar is always measured in terms of the small line height.
-			int y = relativeY / SmallLineHeight;
+			const int y = relativeY / SmallLineHeight;
 			if (y == 4) {
 				if (CountdownScrollUp <= 0) {
 					StoreUp();

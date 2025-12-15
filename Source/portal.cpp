@@ -5,6 +5,7 @@
  */
 #include "portal.h"
 
+#include "controls/local_coop.hpp"
 #include "lighting.h"
 #include "misdat.h"
 #include "missiles.h"
@@ -53,7 +54,7 @@ void AddPortalMissile(const Player &player, Point position, bool sync)
 	if (missile != nullptr) {
 		// Don't show portal opening animation if we sync existing portals
 		if (sync)
-			SetMissDir(*missile, 1);
+			missile->setFrameGroup<PortalFrame>(PortalFrame::Idle);
 
 		if (leveltype != DTYPE_TOWN)
 			missile->_mlid = AddLight(missile->position.tile, 15);
@@ -65,7 +66,7 @@ void SyncPortals()
 	for (int i = 0; i < MAXPORTAL; i++) {
 		if (!Portals[i].open)
 			continue;
-		Player &player = Players[i];
+		const Player &player = Players[i];
 		if (leveltype == DTYPE_TOWN)
 			AddPortalMissile(player, PortalTownPosition[i], true);
 		else {
@@ -162,16 +163,21 @@ void GetPortalLevel()
 
 void GetPortalLvlPos()
 {
+	Point portalPos;
 	if (leveltype == DTYPE_TOWN) {
-		ViewPosition = PortalTownPosition[portalindex] + Displacement { 1, 1 };
+		portalPos = PortalTownPosition[portalindex] + Displacement { 1, 1 };
 	} else {
-		ViewPosition = Portals[portalindex].position;
+		portalPos = Portals[portalindex].position;
 
 		if (portalindex != MyPlayerId) {
-			ViewPosition.x++;
-			ViewPosition.y++;
+			portalPos.x++;
+			portalPos.y++;
 		}
 	}
+
+	// In local co-op mode with active players, UpdateLocalCoopCamera will handle
+	// the view position. We still set it here as a fallback for initial positioning.
+	ViewPosition = portalPos;
 }
 
 bool PosOkPortal(int lvl, Point position)

@@ -7,18 +7,27 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <numeric>
 #include <string>
 
 #include <expected.hpp>
 
 #include "automap.h"
+#include "controls/local_coop.hpp"
+#include "engine/displacement.hpp"
+#include "engine/lighting_defs.hpp"
 #include "engine/load_file.hpp"
+#include "engine/point.hpp"
 #include "engine/points_in_rectangle_range.hpp"
+#include "engine/world_tile.hpp"
+#include "levels/tile_properties.hpp"
+#include "objects.h"
 #include "player.h"
 #include "utils/attributes.h"
 #include "utils/is_of.hpp"
 #include "utils/status_macros.hpp"
+#include "vision.hpp"
 
 namespace devilution {
 
@@ -27,7 +36,7 @@ Light VisionList[MAXVISION];
 Light Lights[MAXLIGHTS];
 std::array<uint8_t, MAXLIGHTS> ActiveLights;
 int ActiveLightCount;
-std::array<std::array<uint8_t, 256>, NumLightingLevels> LightTables;
+std::array<std::array<uint8_t, LightTableSize>, NumLightingLevels> LightTables;
 uint8_t *FullyLitLightTable = nullptr;
 uint8_t *FullyDarkLightTable = nullptr;
 std::array<uint8_t, 256> InfravisionTable;
@@ -39,43 +48,6 @@ bool DisableLighting;
 bool UpdateLighting;
 
 namespace {
-
-/*
- * XY points of vision rays are cast to trace the visibility of the
- * surrounding environment. The table represents N rays of M points in
- * one quadrant (0°-90°) of a circle, so rays for other quadrants will
- * be created by mirroring. Zero points at the end will be trimmed and
- * ignored. A similar table can be recreated using Bresenham's line
- * drawing algorithm, which is suitable for integer arithmetic:
- * https://en.wikipedia.org/wiki/Bresenham's_line_algorithm
- */
-static const DisplacementOf<int8_t> VisionRays[23][15] = {
-	// clang-format off
-	{ { 1, 0 }, { 2, 0 }, { 3, 0 }, { 4, 0 }, { 5, 0 }, { 6, 0 }, { 7, 0 }, { 8, 0 }, { 9, 0 }, { 10,  0 }, { 11,  0 }, { 12,  0 }, { 13,  0 }, { 14,  0 }, { 15,  0 } },
-	{ { 1, 0 }, { 2, 0 }, { 3, 0 }, { 4, 0 }, { 5, 0 }, { 6, 0 }, { 7, 0 }, { 8, 1 }, { 9, 1 }, { 10,  1 }, { 11,  1 }, { 12,  1 }, { 13,  1 }, { 14,  1 }, { 15,  1 } },
-	{ { 1, 0 }, { 2, 0 }, { 3, 0 }, { 4, 1 }, { 5, 1 }, { 6, 1 }, { 7, 1 }, { 8, 1 }, { 9, 1 }, { 10,  1 }, { 11,  1 }, { 12,  2 }, { 13,  2 }, { 14,  2 }, { 15,  2 } },
-	{ { 1, 0 }, { 2, 0 }, { 3, 1 }, { 4, 1 }, { 5, 1 }, { 6, 1 }, { 7, 1 }, { 8, 2 }, { 9, 2 }, { 10,  2 }, { 11,  2 }, { 12,  2 }, { 13,  3 }, { 14,  3 }, { 15,  3 } },
-	{ { 1, 0 }, { 2, 1 }, { 3, 1 }, { 4, 1 }, { 5, 1 }, { 6, 2 }, { 7, 2 }, { 8, 2 }, { 9, 3 }, { 10,  3 }, { 11,  3 }, { 12,  3 }, { 13,  4 }, { 14,  4 }, {  0,  0 } },
-	{ { 1, 0 }, { 2, 1 }, { 3, 1 }, { 4, 1 }, { 5, 2 }, { 6, 2 }, { 7, 3 }, { 8, 3 }, { 9, 3 }, { 10,  4 }, { 11,  4 }, { 12,  4 }, { 13,  5 }, { 14,  5 }, {  0,  0 } },
-	{ { 1, 0 }, { 2, 1 }, { 3, 1 }, { 4, 2 }, { 5, 2 }, { 6, 3 }, { 7, 3 }, { 8, 3 }, { 9, 4 }, { 10,  4 }, { 11,  5 }, { 12,  5 }, { 13,  6 }, { 14,  6 }, {  0,  0 } },
-	{ { 1, 1 }, { 2, 1 }, { 3, 2 }, { 4, 2 }, { 5, 3 }, { 6, 3 }, { 7, 4 }, { 8, 4 }, { 9, 5 }, { 10,  5 }, { 11,  6 }, { 12,  6 }, { 13,  7 }, {  0,  0 }, {  0,  0 } },
-	{ { 1, 1 }, { 2, 1 }, { 3, 2 }, { 4, 2 }, { 5, 3 }, { 6, 4 }, { 7, 4 }, { 8, 5 }, { 9, 6 }, { 10,  6 }, { 11,  7 }, { 12,  7 }, { 12,  8 }, { 13,  8 }, {  0,  0 } },
-	{ { 1, 1 }, { 2, 2 }, { 3, 2 }, { 4, 3 }, { 5, 4 }, { 6, 5 }, { 7, 5 }, { 8, 6 }, { 9, 7 }, { 10,  7 }, { 10,  8 }, { 11,  8 }, { 12,  9 }, {  0,  0 }, {  0,  0 } },
-	{ { 1, 1 }, { 2, 2 }, { 3, 3 }, { 4, 4 }, { 5, 5 }, { 6, 5 }, { 7, 6 }, { 8, 7 }, { 9, 8 }, { 10,  9 }, { 11,  9 }, { 11, 10 }, {  0,  0 }, {  0,  0 }, {  0,  0 } },
-	{ { 1, 1 }, { 2, 2 }, { 3, 3 }, { 4, 4 }, { 5, 5 }, { 6, 6 }, { 7, 7 }, { 8, 8 }, { 9, 9 }, { 10, 10 }, { 11, 11 }, {  0,  0 }, {  0,  0 }, {  0,  0 }, {  0,  0 } },
-	{ { 1, 1 }, { 2, 2 }, { 3, 3 }, { 4, 4 }, { 5, 5 }, { 5, 6 }, { 6, 7 }, { 7, 8 }, { 8, 9 }, {  9, 10 }, {  9, 11 }, { 10, 11 }, {  0,  0 }, {  0,  0 }, {  0,  0 } },
-	{ { 1, 1 }, { 2, 2 }, { 2, 3 }, { 3, 4 }, { 4, 5 }, { 5, 6 }, { 5, 7 }, { 6, 8 }, { 7, 9 }, {  7, 10 }, {  8, 10 }, {  8, 11 }, {  9, 12 }, {  0,  0 }, {  0,  0 } },
-	{ { 1, 1 }, { 1, 2 }, { 2, 3 }, { 2, 4 }, { 3, 5 }, { 4, 6 }, { 4, 7 }, { 5, 8 }, { 6, 9 }, {  6, 10 }, {  7, 11 }, {  7, 12 }, {  8, 12 }, {  8, 13 }, {  0,  0 } },
-	{ { 1, 1 }, { 1, 2 }, { 2, 3 }, { 2, 4 }, { 3, 5 }, { 3, 6 }, { 4, 7 }, { 4, 8 }, { 5, 9 }, {  5, 10 }, {  6, 11 }, {  6, 12 }, {  7, 13 }, {  0,  0 }, {  0,  0 } },
-	{ { 0, 1 }, { 1, 2 }, { 1, 3 }, { 2, 4 }, { 2, 5 }, { 3, 6 }, { 3, 7 }, { 3, 8 }, { 4, 9 }, {  4, 10 }, {  5, 11 }, {  5, 12 }, {  6, 13 }, {  6, 14 }, {  0,  0 } },
-	{ { 0, 1 }, { 1, 2 }, { 1, 3 }, { 1, 4 }, { 2, 5 }, { 2, 6 }, { 3, 7 }, { 3, 8 }, { 3, 9 }, {  4, 10 }, {  4, 11 }, {  4, 12 }, {  5, 13 }, {  5, 14 }, {  0,  0 } },
-	{ { 0, 1 }, { 1, 2 }, { 1, 3 }, { 1, 4 }, { 1, 5 }, { 2, 6 }, { 2, 7 }, { 2, 8 }, { 3, 9 }, {  3, 10 }, {  3, 11 }, {  3, 12 }, {  4, 13 }, {  4, 14 }, {  0,  0 } },
-	{ { 0, 1 }, { 0, 2 }, { 1, 3 }, { 1, 4 }, { 1, 5 }, { 1, 6 }, { 1, 7 }, { 2, 8 }, { 2, 9 }, {  2, 10 }, {  2, 11 }, {  2, 12 }, {  3, 13 }, {  3, 14 }, {  3, 15 } },
-	{ { 0, 1 }, { 0, 2 }, { 0, 3 }, { 1, 4 }, { 1, 5 }, { 1, 6 }, { 1, 7 }, { 1, 8 }, { 1, 9 }, {  1, 10 }, {  1, 11 }, {  2, 12 }, {  2, 13 }, {  2, 14 }, {  2, 15 } },
-	{ { 0, 1 }, { 0, 2 }, { 0, 3 }, { 0, 4 }, { 0, 5 }, { 0, 6 }, { 0, 7 }, { 1, 8 }, { 1, 9 }, {  1, 10 }, {  1, 11 }, {  1, 12 }, {  1, 13 }, {  1, 14 }, {  1, 15 } },
-	{ { 0, 1 }, { 0, 2 }, { 0, 3 }, { 0, 4 }, { 0, 5 }, { 0, 6 }, { 0, 7 }, { 0, 8 }, { 0, 9 }, {  0, 10 }, {  0, 11 }, {  0, 12 }, {  0, 13 }, {  0, 14 }, {  0, 15 } },
-	// clang-format on
-};
 
 /** @brief Number of supported light radiuses (first radius starts with 0) */
 constexpr size_t NumLightRadiuses = 16;
@@ -147,7 +119,7 @@ void DoUnLight(Point position, uint8_t radius)
 
 	auto searchArea = PointsInRectangle(WorldTileRectangle { position, radius });
 
-	for (WorldTilePosition targetPosition : searchArea) {
+	for (const WorldTilePosition targetPosition : searchArea) {
 		if (InDungeonBounds(targetPosition))
 			dLight[targetPosition.x][targetPosition.y] = dPreLight[targetPosition.x][targetPosition.y];
 	}
@@ -198,15 +170,15 @@ void DoLighting(Point position, uint8_t radius, DisplacementOf<int8_t> offset)
 	}
 
 	for (int i = 0; i < 4; i++) {
-		int yBound = i > 0 && i < 3 ? maxY : minY;
-		int xBound = i < 2 ? maxX : minX;
+		const int yBound = i > 0 && i < 3 ? maxY : minY;
+		const int xBound = i < 2 ? maxX : minX;
 		for (int y = 0; y < yBound; y++) {
 			for (int x = 1; x < xBound; x++) {
-				int linearDistance = LightConeInterpolations[offset.deltaX][offset.deltaY][x + block.deltaX][y + block.deltaY];
+				const int linearDistance = LightConeInterpolations[offset.deltaX][offset.deltaY][x + block.deltaX][y + block.deltaY];
 				if (linearDistance >= 128)
 					continue;
-				Point temp = position + (Displacement { x, y }).Rotate(-i);
-				uint8_t v = LightFalloffs[radius][linearDistance];
+				const Point temp = position + (Displacement { x, y }).Rotate(-i);
+				const uint8_t v = LightFalloffs[radius][linearDistance];
 				if (!InDungeonBounds(temp))
 					continue;
 				if (v < GetLight(temp))
@@ -224,7 +196,7 @@ void DoUnVision(Point position, uint8_t radius)
 
 	auto searchArea = PointsInRectangle(WorldTileRectangle { position, radius });
 
-	for (WorldTilePosition targetPosition : searchArea) {
+	for (const WorldTilePosition targetPosition : searchArea) {
 		if (InDungeonBounds(targetPosition))
 			dFlags[targetPosition.x][targetPosition.y] &= ~(DungeonFlag::Visible | DungeonFlag::Lit);
 	}
@@ -232,74 +204,22 @@ void DoUnVision(Point position, uint8_t radius)
 
 void DoVision(Point position, uint8_t radius, MapExplorationType doAutomap, bool visible)
 {
-	DoVisionFlags(position, doAutomap, visible);
+	auto markVisibleFn = [doAutomap, visible](Point rayPoint) {
+		DoVisionFlags(rayPoint, doAutomap, visible);
+	};
+	auto markTransparentFn = [](Point rayPoint) {
+		const int8_t trans = dTransVal[rayPoint.x][rayPoint.y];
+		if (trans != 0)
+			TransList[trans] = true;
+	};
+	auto passesLightFn = [](Point rayPoint) {
+		return TileAllowsLight(rayPoint);
+	};
+	auto inBoundsFn = [](Point rayPoint) {
+		return InDungeonBounds(rayPoint);
+	};
 
-	// Adjustment to a ray length to ensure all rays lie on an
-	// accurate circle
-	static const uint8_t rayLenAdj[23] = { 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 4, 3, 2, 2, 2, 1, 1, 1, 0, 0, 0, 0 };
-	static_assert(std::size(rayLenAdj) == std::size(VisionRays));
-
-	// Four quadrants on a circle
-	static const Displacement quadrants[] = { { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 } };
-
-	// Loop over quadrants and mirror rays for each one
-	for (const auto &quadrant : quadrants) {
-		// Cast a ray for a quadrant
-		for (unsigned int j = 0; j < std::size(VisionRays); j++) {
-			int rayLen = radius - rayLenAdj[j];
-			for (int k = 0; k < rayLen; k++) {
-				const auto &relRayPoint = VisionRays[j][k];
-				// Calculate the next point on a ray in the quadrant
-				Point rayPoint = position + relRayPoint * quadrant;
-				if (!InDungeonBounds(rayPoint))
-					break;
-
-				bool visible = true;
-
-				//
-				// We've cast an approximated ray on an integer 2D
-				// grid, so we need to check if a ray can pass through
-				// the diagonally adjacent tiles. For example, consider
-				// this case:
-				//
-				//        #?
-				//       ↗ #
-				//     x
-				//
-				// The ray is cast from the observer 'x', and reaches
-				// the '?', but diagonally adjacent tiles '#' do not
-				// pass the light, so the '?' should not be visible
-				// for the 2D observer.
-				//
-				// The trick is to perform two additional visibility
-				// checks for the diagonally adjacent tiles, but only
-				// for the rays that are not parallel to the X or Y
-				// coordinate lines. Parallel rays, which have a 0 in
-				// one of their coordinate components, do not require
-				// any additional adjacent visibility checks, and the
-				// tile, hit by the ray, is always considered visible.
-				//
-				if (relRayPoint.deltaX > 0 && relRayPoint.deltaY > 0) {
-					Displacement adjacent1 = { -quadrant.deltaX, 0 };
-					Displacement adjacent2 = { 0, -quadrant.deltaY };
-
-					visible = (TileAllowsLight(rayPoint + adjacent1) || TileAllowsLight(rayPoint + adjacent2));
-				}
-				if (visible)
-					DoVisionFlags(rayPoint, doAutomap, visible);
-
-				bool passesLight = TileAllowsLight(rayPoint);
-				if (!passesLight)
-					// Tile does not pass the light further, we are
-					// done with this ray
-					break;
-
-				int8_t trans = dTransVal[rayPoint.x][rayPoint.y];
-				if (trans != 0)
-					TransList[trans] = true;
-			}
-		}
-	}
+	DoVision(position, radius, markVisibleFn, markTransparentFn, passesLightFn, inBoundsFn);
 }
 
 tl::expected<void, std::string> LoadTrns()
@@ -317,7 +237,7 @@ void MakeLightTable()
 	constexpr uint8_t White = 255;
 	for (auto &lightTable : LightTables) {
 		uint8_t colorIndex = 0;
-		for (uint8_t steps : { 16, 16, 16, 16, 16, 16, 16, 16, 8, 8, 8, 8, 16, 16, 16, 16, 16, 16 }) {
+		for (const uint8_t steps : { 16, 16, 16, 16, 16, 16, 16, 16, 8, 8, 8, 8, 16, 16, 16, 16, 16, 16 }) {
 			const uint8_t shading = shade * steps / 16;
 			const uint8_t shadeStart = colorIndex;
 			const uint8_t shadeEnd = shadeStart + steps - 1;
@@ -399,8 +319,8 @@ void MakeLightTable()
 		for (int offsetX = 0; offsetX < 8; offsetX++) {
 			for (int y = 0; y < 16; y++) {
 				for (int x = 0; x < 16; x++) {
-					int a = (8 * x - offsetX);
-					int b = (8 * y - offsetY);
+					const int a = (8 * x - offsetX);
+					const int b = (8 * y - offsetY);
 					LightConeInterpolations[offsetX][offsetY][x][y] = static_cast<uint8_t>(sqrt(a * a + b * b));
 				}
 			}
@@ -450,7 +370,7 @@ int AddLight(Point position, uint8_t radius)
 	if (ActiveLightCount >= MAXLIGHTS)
 		return NO_LIGHT;
 
-	int lid = ActiveLights[ActiveLightCount++];
+	const int lid = ActiveLights[ActiveLightCount++];
 	Light &light = Lights[lid];
 	light.position.tile = position;
 	light.radius = radius;
@@ -636,7 +556,8 @@ void ProcessVisionList()
 		if (!VisionActive[id])
 			continue;
 		Light &vision = VisionList[id];
-		if (!player.plractive || !player.isOnActiveLevel() || (player._pLvlChanging && &player != MyPlayer)) {
+		// Keep vision active for local players (MyPlayer and local coop players) even when changing levels
+		if (!player.plractive || !player.isOnActiveLevel() || (player._pLvlChanging && !IsLocalPlayer(player))) {
 			DoUnVision(vision.position.tile, vision.radius);
 			VisionActive[id] = false;
 			continue;
@@ -650,15 +571,17 @@ void ProcessVisionList()
 		const size_t id = player.getId();
 		if (!VisionActive[id])
 			continue;
-		Light &vision = VisionList[id];
+		const Light &vision = VisionList[id];
+		// Local players (MyPlayer and local coop players) explore the map for themselves
+		// Other friendly players explore for "others" category
 		MapExplorationType doautomap = MAP_EXP_SELF;
-		if (&player != MyPlayer)
+		if (!IsLocalPlayer(player))
 			doautomap = player.friendlyMode ? MAP_EXP_OTHERS : MAP_EXP_NONE;
 		DoVision(
 		    vision.position.tile,
 		    vision.radius,
 		    doautomap,
-		    &player == MyPlayer);
+		    IsLocalPlayer(player));
 	}
 
 	UpdateVision = false;

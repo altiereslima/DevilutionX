@@ -12,6 +12,7 @@
 
 #include "control.h"
 #include "controls/control_mode.hpp"
+#include "controls/local_coop.hpp"
 #include "controls/plrctrls.h"
 #include "cursor.h"
 #include "diablo_msg.hpp"
@@ -82,7 +83,7 @@ bool IsWarpOpen(dungeon_type type)
 	if (gbIsMultiplayer && type != DTYPE_NEST) // Opening the nest is part of in town quest
 		return true;
 
-	Player &myPlayer = *MyPlayer;
+	const Player &myPlayer = *MyPlayer;
 
 	if (type == DTYPE_CATACOMBS && (myPlayer.pTownWarps & 1) != 0)
 		return true;
@@ -448,8 +449,8 @@ bool ForceL2Trig()
 		if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 			for (int j = 0; j < numtrigs; j++) {
 				if (trigs[j]._tmsg == WM_DIABPREVLVL) {
-					int dx = std::abs(trigs[j].position.x - cursPosition.x);
-					int dy = std::abs(trigs[j].position.y - cursPosition.y);
+					const int dx = std::abs(trigs[j].position.x - cursPosition.x);
+					const int dy = std::abs(trigs[j].position.y - cursPosition.y);
 					if (dx < 4 && dy < 4) {
 						InfoString = fmt::format(fmt::runtime(_("Up to level {:d}")), currlevel - 1);
 						cursPosition = trigs[j].position;
@@ -477,8 +478,8 @@ bool ForceL2Trig()
 			if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 				for (int j = 0; j < numtrigs; j++) {
 					if (trigs[j]._tmsg == WM_DIABTWARPUP) {
-						int dx = std::abs(trigs[j].position.x - cursPosition.x);
-						int dy = std::abs(trigs[j].position.y - cursPosition.y);
+						const int dx = std::abs(trigs[j].position.x - cursPosition.x);
+						const int dy = std::abs(trigs[j].position.y - cursPosition.y);
 						if (dx < 4 && dy < 4) {
 							InfoString = _("Up to town");
 							cursPosition = trigs[j].position;
@@ -500,8 +501,8 @@ bool ForceL3Trig()
 			InfoString = fmt::format(fmt::runtime(_("Up to level {:d}")), currlevel - 1);
 			for (int j = 0; j < numtrigs; j++) {
 				if (trigs[j]._tmsg == WM_DIABPREVLVL) {
-					int dx = std::abs(trigs[j].position.x - cursPosition.x);
-					int dy = std::abs(trigs[j].position.y - cursPosition.y);
+					const int dx = std::abs(trigs[j].position.x - cursPosition.x);
+					const int dy = std::abs(trigs[j].position.y - cursPosition.y);
 					if (dx < 4 && dy < 4) {
 						cursPosition = trigs[j].position;
 						return true;
@@ -529,8 +530,8 @@ bool ForceL3Trig()
 			if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 				for (int j = 0; j < numtrigs; j++) {
 					if (trigs[j]._tmsg == WM_DIABTWARPUP) {
-						int dx = std::abs(trigs[j].position.x - cursPosition.x);
-						int dy = std::abs(trigs[j].position.y - cursPosition.y);
+						const int dx = std::abs(trigs[j].position.x - cursPosition.x);
+						const int dy = std::abs(trigs[j].position.y - cursPosition.y);
 						if (dx < 4 && dy < 4) {
 							InfoString = _("Up to town");
 							cursPosition = trigs[j].position;
@@ -576,8 +577,8 @@ bool ForceL4Trig()
 			if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 				for (int j = 0; j < numtrigs; j++) {
 					if (trigs[j]._tmsg == WM_DIABTWARPUP) {
-						int dx = std::abs(trigs[j].position.x - cursPosition.x);
-						int dy = std::abs(trigs[j].position.y - cursPosition.y);
+						const int dx = std::abs(trigs[j].position.x - cursPosition.x);
+						const int dy = std::abs(trigs[j].position.y - cursPosition.y);
 						if (dx < 4 && dy < 4) {
 							InfoString = _("Up to town");
 							cursPosition = trigs[j].position;
@@ -638,8 +639,8 @@ bool ForceHiveTrig()
 			if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 				for (int j = 0; j < numtrigs; j++) {
 					if (trigs[j]._tmsg == WM_DIABTWARPUP) {
-						int dx = std::abs(trigs[j].position.x - cursPosition.x);
-						int dy = std::abs(trigs[j].position.y - cursPosition.y);
+						const int dx = std::abs(trigs[j].position.x - cursPosition.x);
+						const int dy = std::abs(trigs[j].position.y - cursPosition.y);
 						if (dx < 4 && dy < 4) {
 							InfoString = _("Up to town");
 							cursPosition = trigs[j].position;
@@ -687,8 +688,8 @@ bool ForceCryptTrig()
 			if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 				for (int j = 0; j < numtrigs; j++) {
 					if (trigs[j]._tmsg == WM_DIABTWARPUP) {
-						int dx = std::abs(trigs[j].position.x - cursPosition.x);
-						int dy = std::abs(trigs[j].position.y - cursPosition.y);
+						const int dx = std::abs(trigs[j].position.x - cursPosition.x);
+						const int dy = std::abs(trigs[j].position.y - cursPosition.y);
 						if (dx < 4 && dy < 4) {
 							InfoString = _("Up to town");
 							cursPosition = trigs[j].position;
@@ -706,8 +707,8 @@ bool ForceCryptTrig()
 void Freeupstairs()
 {
 	for (int i = 0; i < numtrigs; i++) {
-		int tx = trigs[i].position.x;
-		int ty = trigs[i].position.y;
+		const int tx = trigs[i].position.x;
+		const int ty = trigs[i].position.y;
 
 		for (int yy = -2; yy <= 2; yy++) {
 			for (int xx = -2; xx <= 2; xx++) {
@@ -869,69 +870,92 @@ void CheckTriggers()
 	if (myPlayer._pmode != PM_STAND)
 		return;
 
+	// In local co-op mode, check if ANY local player is standing on a trigger
+	// When one player triggers a level change, all players go together
+	Player *triggeringPlayer = nullptr;
+	int triggerIndex = -1;
+
+	// First check player 1 (MyPlayer)
 	for (int i = 0; i < numtrigs; i++) {
-		if (myPlayer.position.tile != trigs[i].position) {
-			continue;
+		if (myPlayer.position.tile == trigs[i].position) {
+			triggeringPlayer = &myPlayer;
+			triggerIndex = i;
+			break;
 		}
+	}
 
-		switch (trigs[i]._tmsg) {
-		case WM_DIABNEXTLVL:
-			if (gbIsSpawn && currlevel >= 2) {
-				NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, { myPlayer.position.tile.x, myPlayer.position.tile.y + 1 });
-				myPlayer.Say(HeroSpeech::NotAChance);
-				InitDiabloMsg(EMSG_NOT_IN_SHAREWARE);
-			} else {
-				StartNewLvl(myPlayer, trigs[i]._tmsg, currlevel + 1);
-			}
-			break;
-		case WM_DIABPREVLVL:
-			StartNewLvl(myPlayer, trigs[i]._tmsg, currlevel - 1);
-			break;
-		case WM_DIABRTNLVL:
-			StartNewLvl(myPlayer, trigs[i]._tmsg, GetMapReturnLevel());
-			break;
-		case WM_DIABTOWNWARP:
-			if (gbIsMultiplayer) {
-				bool abort = false;
-				diablo_message abortflag;
+	// If player 1 didn't trigger, check local co-op players
+	if (triggeringPlayer == nullptr) {
+		triggeringPlayer = FindLocalCoopPlayerOnTrigger(triggerIndex);
+	}
 
-				auto position = myPlayer.position.tile;
-				if (trigs[i]._tlvl == 5 && myPlayer.getCharacterLevel() < 8) {
-					abort = true;
-					position.y += 1;
-					abortflag = EMSG_REQUIRES_LVL_8;
-				}
+	// No player triggered anything
+	if (triggeringPlayer == nullptr || triggerIndex < 0)
+		return;
 
-				if (IsAnyOf(trigs[i]._tlvl, 9, 17) && myPlayer.getCharacterLevel() < 13) {
-					abort = true;
-					position.x += 1;
-					abortflag = EMSG_REQUIRES_LVL_13;
-				}
+	// Process the trigger - always use myPlayer for level change since that's
+	// the player whose save file we're using, but check requirements against
+	// the triggering player
+	switch (trigs[triggerIndex]._tmsg) {
+	case WM_DIABNEXTLVL:
+		if (gbIsSpawn && currlevel >= 2) {
+			NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, { myPlayer.position.tile.x, myPlayer.position.tile.y + 1 });
+			myPlayer.Say(HeroSpeech::NotAChance);
+			InitDiabloMsg(EMSG_NOT_IN_SHAREWARE);
+		} else {
+			StartNewLvl(myPlayer, trigs[triggerIndex]._tmsg, currlevel + 1);
+		}
+		break;
+	case WM_DIABPREVLVL:
+		StartNewLvl(myPlayer, trigs[triggerIndex]._tmsg, currlevel - 1);
+		break;
+	case WM_DIABRTNLVL:
+		StartNewLvl(myPlayer, trigs[triggerIndex]._tmsg, GetMapReturnLevel());
+		break;
+	case WM_DIABTOWNWARP:
+		if (gbIsMultiplayer) {
+			bool abort = false;
+			diablo_message abortflag;
 
-				if (IsAnyOf(trigs[i]._tlvl, 13, 21) && myPlayer.getCharacterLevel() < 17) {
-					abort = true;
-					position.y += 1;
-					abortflag = EMSG_REQUIRES_LVL_17;
-				}
-
-				if (abort) {
-					myPlayer.Say(HeroSpeech::ICantGetThereFromHere);
-
-					InitDiabloMsg(abortflag);
-					NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, position);
-					return;
-				}
+			// Check level requirements against the triggering player
+			auto position = triggeringPlayer->position.tile;
+			if (trigs[triggerIndex]._tlvl == 5 && triggeringPlayer->getCharacterLevel() < 8) {
+				abort = true;
+				position.y += 1;
+				abortflag = EMSG_REQUIRES_LVL_8;
 			}
 
-			StartNewLvl(myPlayer, trigs[i]._tmsg, trigs[i]._tlvl);
-			break;
-		case WM_DIABTWARPUP:
-			TWarpFrom = currlevel;
-			StartNewLvl(myPlayer, trigs[i]._tmsg, 0);
-			break;
-		default:
-			app_fatal("Unknown trigger msg");
+			if (IsAnyOf(trigs[triggerIndex]._tlvl, 9, 17) && triggeringPlayer->getCharacterLevel() < 13) {
+				abort = true;
+				position.x += 1;
+				abortflag = EMSG_REQUIRES_LVL_13;
+			}
+
+			if (IsAnyOf(trigs[triggerIndex]._tlvl, 13, 21) && triggeringPlayer->getCharacterLevel() < 17) {
+				abort = true;
+				position.y += 1;
+				abortflag = EMSG_REQUIRES_LVL_17;
+			}
+
+			if (abort) {
+				triggeringPlayer->Say(HeroSpeech::ICantGetThereFromHere);
+
+				InitDiabloMsg(abortflag);
+				// Move the triggering player away from the trigger
+				uint8_t triggerId = triggeringPlayer == &myPlayer ? MyPlayerId : static_cast<uint8_t>(triggeringPlayer - &Players[0]);
+				NetSendCmdLoc(triggerId, true, CMD_WALKXY, position);
+				return;
+			}
 		}
+
+		StartNewLvl(myPlayer, trigs[triggerIndex]._tmsg, trigs[triggerIndex]._tlvl);
+		break;
+	case WM_DIABTWARPUP:
+		TWarpFrom = currlevel;
+		StartNewLvl(myPlayer, trigs[triggerIndex]._tmsg, 0);
+		break;
+	default:
+		app_fatal("Unknown trigger msg");
 	}
 }
 

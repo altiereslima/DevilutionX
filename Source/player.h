@@ -183,16 +183,6 @@ constexpr std::array<char, 9> WepChar = {
 	't', // staff
 };
 
-/** Maps from player class to letter used in graphic files. */
-constexpr std::array<char, 6> CharChar = {
-	'w', // warrior
-	'r', // rogue
-	's', // sorcerer
-	'm', // monk
-	'b', // bard
-	'c', // barbarian
-};
-
 /**
  * @brief Contains Data (CelSprites) for a player graphic (player_graphic)
  */
@@ -293,6 +283,8 @@ struct Player {
 	 * @brief Contains Data (Sprites) for the different Animations
 	 */
 	std::array<PlayerAnimationData, enum_size<player_graphic>::value> AnimationData;
+	std::array<OptionalOwnedClxSpriteSheet, 2> PartyInfoSprites;
+	std::array<std::string, 2> PartyInfoSpriteLocations;
 	int8_t _pNFrames;
 	int8_t _pWFrames;
 	int8_t _pAFrames;
@@ -924,6 +916,13 @@ extern bool MyPlayerIsDead;
 
 Player *PlayerAtPosition(Point position, bool ignoreMovingPlayers = false);
 
+/**
+ * @brief Get the players current portrait sprite which is used for the party panel.
+ * @param player
+ */
+ClxSprite GetPlayerPortraitSprite(Player &player);
+bool IsPlayerUnarmed(Player &player);
+
 void LoadPlrGFX(Player &player, player_graphic graphic);
 void InitPlayerGFX(Player &player);
 void ResetPlayerGFX(Player &player);
@@ -954,6 +953,7 @@ void PlrClrTrans(Point position);
 void PlrDoTrans(Point position);
 void SetPlayerOld(Player &player);
 void FixPlayerLocation(Player &player, Direction bDir);
+void StartWalk(Player &player, Direction dir, bool pmWillBeCalled);
 void StartStand(Player &player, Direction dir);
 void StartPlrBlock(Player &player, Direction dir);
 void FixPlrWalkTags(const Player &player);
@@ -965,6 +965,7 @@ void StartPlayerKill(Player &player, DeathReason deathReason);
 void StripTopGold(Player &player);
 void SyncPlrKill(Player &player, DeathReason deathReason);
 void RemovePlrMissiles(const Player &player);
+void InitLevelChange(Player &player);
 void StartNewLvl(Player &player, interface_mode fom, int lvl);
 void RestartTownLvl(Player &player);
 void StartWarpLvl(Player &player, size_t pidx);

@@ -17,9 +17,9 @@
 #include <fmt/format.h>
 
 #include "config.h"
-#include "game_mode.hpp"
 #include "levels/gendung.h"
 #include "levels/setmaps.h"
+#include "lua/lua_global.hpp"
 #include "multi.h"
 #include "panels/charpanel.hpp"
 #include "player.h"
@@ -29,11 +29,11 @@
 
 namespace devilution {
 namespace {
-void IsHellfireChanged()
+void ModChanged()
 {
 	discord_manager::UpdateMenu(true);
 }
-const auto IsHellfireChangedHandler = (AddIsHellfireChangeHandler(IsHellfireChanged), true);
+const auto ModChangedHandler = (AddModsChangedHandler(ModChanged), true);
 } // namespace
 
 namespace discord_manager {
@@ -41,7 +41,7 @@ namespace discord_manager {
 // App ID used for DevilutionX's Diablo (classic Diablo's is 496571953147150354)
 constexpr discord::ClientId DiscordDevilutionxAppId = 795760213524742205;
 
-constexpr auto IgnoreResult = [](discord::Result result) {};
+constexpr auto IgnoreResult = [](discord::Result result) { };
 
 discord::Core *discord_core = []() -> discord::Core * {
 	discord::Core *core;
@@ -124,7 +124,7 @@ std::string GetTooltipString()
 std::string GetPlayerAssetString()
 {
 	char chars[5] {
-		CharChar[static_cast<int>(MyPlayer->_pClass)],
+		GetPlayerSpriteDataForClass(MyPlayer->_pClass).classChar,
 		ArmourChar[tracked_data.playerGfx >> 4],
 		WepChar[tracked_data.playerGfx & 0xF],
 		'a',

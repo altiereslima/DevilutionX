@@ -11,12 +11,19 @@
 #include <string>
 #include <string_view>
 
+#ifdef USE_SDL3
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_keycode.h>
+#include <SDL3/SDL_rect.h>
+#else
 #include <SDL.h>
-#include <expected.hpp>
 
 #ifdef USE_SDL1
 #include "utils/sdl2_to_1_2_backports.h"
 #endif
+#endif
+
+#include <expected.hpp>
 
 #include "DiabloUI/text_input.hpp"
 #include "DiabloUI/ui_flags.hpp"
@@ -51,6 +58,7 @@ extern bool ChatFlag;
 extern bool SpellbookFlag;
 extern bool CharFlag;
 extern StringOrView InfoString;
+extern StringOrView FloatingInfoString;
 extern bool MainPanelFlag;
 extern bool MainPanelButtonDown;
 extern bool SpellSelectFlag;
@@ -83,8 +91,8 @@ inline bool CanPanelsCoverView()
 	return GetScreenWidth() <= mainPanel.size.width && GetScreenHeight() <= SidePanelSize.height + mainPanel.size.height;
 }
 
-void AddInfoBoxString(std::string_view str);
-void AddInfoBoxString(std::string &&str);
+void AddInfoBoxString(std::string_view str, bool floatingBox = false);
+void AddInfoBoxString(std::string &&str, bool floatingBox = false);
 void DrawPanelBox(const Surface &out, SDL_Rect srcRect, Point targetPosition);
 Point GetPanelPosition(UiPanels panel, Point offset = { 0, 0 });
 
@@ -100,7 +108,7 @@ void DrawLifeFlaskUpper(const Surface &out);
  * First sets the fill amount then draws the empty flask cel portion then the filled
  * flask portion.
  */
-void DrawLifeFlaskLower(const Surface &out);
+void DrawLifeFlaskLower(const Surface &out, bool drawFilledPortion);
 
 /**
  * Draws the top dome of the mana flask (that part that protrudes out of the control panel).
@@ -112,7 +120,7 @@ void DrawManaFlaskUpper(const Surface &out);
 /**
  * Controls the drawing of the area of the mana flask within the control panel.
  */
-void DrawManaFlaskLower(const Surface &out);
+void DrawManaFlaskLower(const Surface &out, bool drawFilledPortion);
 
 /**
  * Controls drawing of current / max values (health, mana) within the control panel.
@@ -168,12 +176,27 @@ void FreeControlPan();
  * Sets a string to be drawn in the info box and then draws it.
  */
 void DrawInfoBox(const Surface &out);
+void DrawFloatingInfoBox(const Surface &out);
 void CheckLevelButton();
 void CheckLevelButtonUp();
 void DrawLevelButton(const Surface &out);
 void CheckChrBtns();
 void ReleaseChrBtns(bool addAllStatPoints);
 void DrawDurIcon(const Surface &out);
+
+/**
+ * @brief Draw durability warning icons for a specific player at a given position.
+ *
+ * Shows icons for equipped items with low durability (<=5).
+ * Icons are drawn side by side horizontally.
+ *
+ * @param out The surface to draw on.
+ * @param player The player whose equipment to check.
+ * @param position Top-left corner where icons should start.
+ * @param alignRight If true, icons are aligned to the right of the position.
+ */
+void DrawPlayerDurabilityIcons(const Surface &out, const Player &player, Point position, bool alignRight);
+
 void RedBack(const Surface &out);
 void DrawDeathText(const Surface &out);
 void DrawSpellBook(const Surface &out);

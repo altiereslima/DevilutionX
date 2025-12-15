@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <queue>
 #include <string>
+#include <utility>
 
 #include "dvlnet/abstract_net.h"
 
@@ -10,8 +11,10 @@ namespace devilution::net {
 
 class loopback : public abstract_net {
 private:
-	std::queue<buffer_t> message_queue;
+	/// Message queue storing pairs of (sender_id, message_data)
+	std::queue<std::pair<uint8_t, buffer_t>> message_queue;
 	buffer_t message_last;
+	uint8_t message_last_sender = 0;
 	uint8_t plr_single = 0;
 
 public:
@@ -26,8 +29,8 @@ public:
 	void SNetGetProviderCaps(struct _SNETCAPS *caps) override;
 	bool SNetRegisterEventHandler(event_type evtype, SEVTHANDLER func) override;
 	bool SNetUnregisterEventHandler(event_type evtype) override;
-	bool SNetLeaveGame(int type) override;
-	bool SNetDropPlayer(int playerid, uint32_t flags) override;
+	bool SNetLeaveGame(net::leaveinfo_t type) override;
+	bool SNetDropPlayer(int playerid, net::leaveinfo_t flags) override;
 	bool SNetGetOwnerTurnsWaiting(uint32_t *turns) override;
 	bool SNetGetTurnsInTransit(uint32_t *turns) override;
 	void setup_gameinfo(buffer_t info) override;

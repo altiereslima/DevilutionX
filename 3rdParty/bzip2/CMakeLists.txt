@@ -1,10 +1,10 @@
 include(functions/FetchContent_ExcludeFromAll_backport)
 
 include(FetchContent)
-FetchContent_Declare(
-    bzip2
-    URL https://github.com/libarchive/bzip2/archive/refs/tags/bzip2-1.0.8.tar.gz
-    URL_HASH SHA256=db106b740252669664fd8f3a1c69fe7f689d5cd4b132f82ba82b9afba27627df
+
+FetchContent_Declare_ExcludeFromAll(bzip2
+    GIT_REPOSITORY https://sourceware.org/git/bzip2
+    GIT_TAG bzip2-1.0.8
 )
 FetchContent_MakeAvailable_ExcludeFromAll(bzip2)
 

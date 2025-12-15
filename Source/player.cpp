@@ -7,10 +7,18 @@
 #include <cmath>
 #include <cstdint>
 
+#ifdef USE_SDL3
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_timer.h>
+#else
+#include <SDL.h>
+#endif
+
 #include <fmt/core.h>
 
 #include "control.h"
 #include "controls/control_mode.hpp"
+#include "controls/local_coop.hpp"
 #include "controls/plrctrls.h"
 #include "cursor.h"
 #include "dead.h"
@@ -36,6 +44,7 @@
 #include "loadsave.h"
 #include "minitext.h"
 #include "missiles.h"
+#include "monster.h"
 #include "nthread.h"
 #include "objects.h"
 #include "options.h"
@@ -97,8 +106,8 @@ constexpr std::array<const DirectionSettings, 8> WalkSettings { {
 
 bool PlrDirOK(const Player &player, Direction dir)
 {
-	Point position = player.position.tile;
-	Point futurePosition = position + dir;
+	const Point position = player.position.tile;
+	const Point futurePosition = position + dir;
 	if (futurePosition.x < 0 || !PosOkPlayer(player, futurePosition)) {
 		return false;
 	}
@@ -143,20 +152,6 @@ void StartWalkAnimation(Player &player, Direction dir, bool pmWillBeCalled)
 	NewPlrAnim(player, player_graphic::Walk, dir, AnimationDistributionFlags::ProcessAnimationPending, skippedFrames);
 }
 
-/**
- * @brief Start moving a player to a new tile
- */
-void StartWalk(Player &player, Direction dir, bool pmWillBeCalled)
-{
-	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
-		SyncPlrKill(player, DeathReason::Unknown);
-		return;
-	}
-
-	StartWalkAnimation(player, dir, pmWillBeCalled);
-	HandleWalkMode(player, dir);
-}
-
 void ClearStateVariables(Player &player)
 {
 	player.position.temp = { 0, 0 };
@@ -166,7 +161,7 @@ void ClearStateVariables(Player &player)
 
 void StartAttack(Player &player, Direction d, bool includesFirstFrame)
 {
-	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
+	if (player._pInvincible && player._pHitPoints == 0 && IsLocalPlayer(player)) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
 	}
@@ -198,7 +193,7 @@ void StartAttack(Player &player, Direction d, bool includesFirstFrame)
 
 void StartRangeAttack(Player &player, Direction d, WorldTileCoord cx, WorldTileCoord cy, bool includesFirstFrame)
 {
-	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
+	if (player._pInvincible && player._pHitPoints == 0 && IsLocalPlayer(player)) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
 	}
@@ -240,7 +235,7 @@ player_graphic GetPlayerGraphicForSpell(SpellID spellId)
 
 void StartSpell(Player &player, Direction d, WorldTileCoord cx, WorldTileCoord cy)
 {
-	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
+	if (player._pInvincible && player._pHitPoints == 0 && IsLocalPlayer(player)) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
 	}
@@ -286,7 +281,7 @@ void RespawnDeadItem(Item &&itm, Point target)
 	if (ActiveItemCount >= MAXITEMS)
 		return;
 
-	int ii = AllocateItem();
+	const int ii = AllocateItem();
 	Item &item = Items[ii];
 
 	dItem[target.x][target.y] = ii + 1;
@@ -346,47 +341,12 @@ int DropGold(Player &player, int amount, bool skipFullStacks)
 
 void DropHalfPlayersGold(Player &player)
 {
-	int remainingGold = DropGold(player, player._pGold / 2, true);
+	const int remainingGold = DropGold(player, player._pGold / 2, true);
 	if (remainingGold > 0) {
 		DropGold(player, remainingGold, false);
 	}
 
 	player._pGold /= 2;
-}
-
-void InitLevelChange(Player &player)
-{
-	Player &myPlayer = *MyPlayer;
-
-	RemovePlrMissiles(player);
-	player.pManaShield = false;
-	player.wReflections = 0;
-	if (&player != MyPlayer) {
-		// share info about your manashield when another player joins the level
-		if (myPlayer.pManaShield)
-			NetSendCmd(true, CMD_SETSHIELD);
-		// share info about your reflect charges when another player joins the level
-		NetSendCmdParam1(true, CMD_SETREFLECT, myPlayer.wReflections);
-	} else if (qtextflag) {
-		qtextflag = false;
-		stream_stop();
-	}
-
-	FixPlrWalkTags(player);
-	SetPlayerOld(player);
-	if (&player == MyPlayer) {
-		player.occupyTile(player.position.tile, false);
-	} else {
-		player._pLvlVisited[player.plrlevel] = true;
-	}
-
-	ClrPlrPath(player);
-	player.destAction = ACTION_NONE;
-	player._pLvlChanging = true;
-
-	if (&player == MyPlayer) {
-		player.pLvlLoad = 10;
-	}
 }
 
 /**
@@ -551,17 +511,19 @@ bool PlrHitMonst(Player &player, Monster &monster, bool adjacentDamage = false)
 
 	if (gbIsHellfire && HasAllOf(player._pIFlags, ItemSpecialEffect::FireDamage | ItemSpecialEffect::LightningDamage)) {
 		// Fixed off by 1 error from Hellfire
-		int midam = RandomIntBetween(player._pIFMinDam, player._pIFMaxDam);
+		const int midam = RandomIntBetween(player._pIFMinDam, player._pIFMaxDam);
 		AddMissile(player.position.tile, player.position.temp, player._pdir, MissileID::SpectralArrow, TARGET_MONSTERS, player, midam, 0);
 	}
-	int mind = player._pIMinDam;
-	int maxd = player._pIMaxDam;
+	const int mind = player._pIMinDam;
+	const int maxd = player._pIMaxDam;
 	int dam = RandomIntBetween(mind, maxd);
 	dam += dam * player._pIBonusDam / 100;
 	dam += player._pIBonusDamMod;
 	int dam2 = dam << 6;
 	dam += player._pDamageMod;
-	if (player._pClass == HeroClass::Warrior || player._pClass == HeroClass::Barbarian) {
+
+	const ClassAttributes &classAttributes = GetClassAttributes(player._pClass);
+	if (HasAnyOf(classAttributes.classFlags, PlayerClassFlag::CriticalStrike)) {
 		if (GenerateRnd(100) < player.getCharacterLevel()) {
 			dam *= 2;
 		}
@@ -616,7 +578,8 @@ bool PlrHitMonst(Player &player, Monster &monster, bool adjacentDamage = false)
 	if (adjacentDamage)
 		dam >>= 2;
 
-	if (&player == MyPlayer) {
+	// Local players (MyPlayer and local coop players) apply damage locally
+	if (IsLocalPlayer(player)) {
 		if (HasAnyOf(player.pDamAcFlags, ItemSpecialEffectHf::Peril)) {
 			dam2 += player._pIGetHit << 6;
 			if (dam2 >= 0) {
@@ -699,7 +662,7 @@ bool PlrHitPlr(Player &attacker, Player &target)
 		return false;
 	}
 
-	int hit = GenerateRnd(100);
+	const int hit = GenerateRnd(100);
 
 	int hper = attacker.GetMeleeToHit() - target.GetArmor();
 	hper = std::clamp(hper, 5, 95);
@@ -717,25 +680,26 @@ bool PlrHitPlr(Player &attacker, Player &target)
 	}
 
 	if (blk < blkper) {
-		Direction dir = GetDirection(target.position.tile, attacker.position.tile);
+		const Direction dir = GetDirection(target.position.tile, attacker.position.tile);
 		StartPlrBlock(target, dir);
 		return true;
 	}
 
-	int mind = attacker._pIMinDam;
-	int maxd = attacker._pIMaxDam;
+	const int mind = attacker._pIMinDam;
+	const int maxd = attacker._pIMaxDam;
 	int dam = RandomIntBetween(mind, maxd);
 	dam += (dam * attacker._pIBonusDam) / 100;
 	dam += attacker._pIBonusDamMod + attacker._pDamageMod;
 
-	if (attacker._pClass == HeroClass::Warrior || attacker._pClass == HeroClass::Barbarian) {
+	const ClassAttributes &classAttributes = GetClassAttributes(attacker._pClass);
+	if (HasAnyOf(classAttributes.classFlags, PlayerClassFlag::CriticalStrike)) {
 		if (GenerateRnd(100) < attacker.getCharacterLevel()) {
 			dam *= 2;
 		}
 	}
-	int skdam = dam << 6;
+	const int skdam = dam << 6;
 	if (HasAnyOf(attacker._pIFlags, ItemSpecialEffect::RandomStealLife)) {
-		int tac = GenerateRnd(skdam / 8);
+		const int tac = GenerateRnd(skdam / 8);
 		attacker._pHitPoints += tac;
 		if (attacker._pHitPoints > attacker._pMaxHP) {
 			attacker._pHitPoints = attacker._pMaxHP;
@@ -853,11 +817,11 @@ bool DoRangeAttack(Player &player)
 		int xoff = 0;
 		int yoff = 0;
 		if (arrows != 1) {
-			int angle = arrow == 0 ? -1 : 1;
-			int x = player.position.temp.x - player.position.tile.x;
+			const int angle = arrow == 0 ? -1 : 1;
+			const int x = player.position.temp.x - player.position.tile.x;
 			if (x != 0)
 				yoff = x < 0 ? angle : -angle;
-			int y = player.position.temp.y - player.position.tile.y;
+			const int y = player.position.temp.y - player.position.tile.y;
 			if (y != 0)
 				xoff = y < 0 ? -angle : angle;
 		}
@@ -1035,7 +999,7 @@ bool DoDeath(Player &player)
 		if (player.AnimInfo.tickCounterOfCurrentFrame == 0) {
 			player.AnimInfo.ticksPerFrame = 100;
 			dFlags[player.position.tile.x][player.position.tile.y] |= DungeonFlag::DeadPlayer;
-		} else if (&player == MyPlayer && player.AnimInfo.tickCounterOfCurrentFrame == 30) {
+		} else if (IsLocalPlayer(player) && player.AnimInfo.tickCounterOfCurrentFrame == 30) {
 			MyPlayerIsDead = true;
 		}
 	}
@@ -1045,7 +1009,7 @@ bool DoDeath(Player &player)
 
 bool IsPlayerAdjacentToObject(Player &player, Object &object)
 {
-	int x = std::abs(player.position.tile.x - object.position.x);
+	const int x = std::abs(player.position.tile.x - object.position.x);
 	int y = std::abs(player.position.tile.y - object.position.y);
 	if (y > 1 && object.position.y >= 1 && FindObjectAtPosition(object.position + Direction::NorthEast) == &object) {
 		// special case for activating a large object from the north-east side
@@ -1056,12 +1020,12 @@ bool IsPlayerAdjacentToObject(Player &player, Object &object)
 
 void TryDisarm(const Player &player, Object &object)
 {
-	if (&player == MyPlayer)
+	if (IsLocalPlayer(player))
 		NewCursor(CURSOR_HAND);
 	if (!object._oTrapFlag) {
 		return;
 	}
-	int trapdisper = 2 * player._pDexterity - 5 * currlevel;
+	const int trapdisper = 2 * player._pDexterity - 5 * currlevel;
 	if (GenerateRnd(100) > trapdisper) {
 		return;
 	}
@@ -1087,7 +1051,7 @@ void CheckNewPath(Player &player, bool pmWillBeCalled)
 	Object *object;
 	Item *item;
 
-	int targetId = player.destParam1;
+	const int targetId = player.destParam1;
 
 	switch (player.destAction) {
 	case ACTION_ATTACKMON:
@@ -1128,7 +1092,7 @@ void CheckNewPath(Player &player, bool pmWillBeCalled)
 	Direction d;
 	if (player.walkpath[0] != WALK_NONE) {
 		if (player._pmode == PM_STAND) {
-			if (&player == MyPlayer) {
+			if (IsLocalPlayer(player)) {
 				if (player.destAction == ACTION_ATTACKMON || player.destAction == ACTION_ATTACKPLR) {
 					if (player.destAction == ACTION_ATTACKMON) {
 						x = std::abs(player.position.future.x - monster->position.future.x);
@@ -1282,26 +1246,30 @@ void CheckNewPath(Player &player, bool pmWillBeCalled)
 			}
 			break;
 		case ACTION_PICKUPITEM:
-			if (&player == MyPlayer) {
+			if (IsLocalPlayer(player)) {
 				x = std::abs(player.position.tile.x - item->position.x);
 				y = std::abs(player.position.tile.y - item->position.y);
-				if (x <= 1 && y <= 1 && pcurs == CURSOR_HAND && !item->_iRequest) {
+				// For local co-op players, we always use CURSOR_HAND since they have their own cursor state
+				const bool canPickup = (&player == MyPlayer) ? (pcurs == CURSOR_HAND) : true;
+				if (x <= 1 && y <= 1 && canPickup && !item->_iRequest) {
 					NetSendCmdGItem(true, CMD_REQUESTGITEM, player, targetId);
 					item->_iRequest = true;
 				}
 			}
 			break;
 		case ACTION_PICKUPAITEM:
-			if (&player == MyPlayer) {
+			if (IsLocalPlayer(player)) {
 				x = std::abs(player.position.tile.x - item->position.x);
 				y = std::abs(player.position.tile.y - item->position.y);
-				if (x <= 1 && y <= 1 && pcurs == CURSOR_HAND) {
+				// For local co-op players, we always use CURSOR_HAND since they have their own cursor state
+				const bool canPickup = (&player == MyPlayer) ? (pcurs == CURSOR_HAND) : true;
+				if (x <= 1 && y <= 1 && canPickup) {
 					NetSendCmdGItem(true, CMD_REQUESTAGITEM, player, targetId);
 				}
 			}
 			break;
 		case ACTION_TALK:
-			if (&player == MyPlayer) {
+			if (IsLocalPlayer(player)) {
 				HelpFlag = false;
 				TalkToTowner(player, player.destParam1);
 			}
@@ -1443,7 +1411,7 @@ void ValidatePlayer()
 	}
 
 	uint64_t msk = 0;
-	for (int b = static_cast<int8_t>(SpellID::Firebolt); b < MAX_SPELLS; b++) {
+	for (size_t b = static_cast<size_t>(SpellID::Firebolt); b < SpellsData.size(); b++) {
 		if (GetSpellBookLevel((SpellID)b) != -1) {
 			msk |= GetSpellBitmask(static_cast<SpellID>(b));
 			if (myPlayer._pSplLvl[b] > MaxSpellLevel)
@@ -1484,7 +1452,7 @@ PlayerWeaponGraphic GetPlayerWeaponGraphic(player_graphic graphic, PlayerWeaponG
 
 uint16_t GetPlayerSpriteWidth(HeroClass cls, player_graphic graphic, PlayerWeaponGraphic weaponGraphic)
 {
-	PlayerSpriteData spriteData = PlayersSpriteData[static_cast<size_t>(cls)];
+	const PlayerSpriteData spriteData = GetPlayerSpriteDataForClass(cls);
 
 	switch (graphic) {
 	case player_graphic::Stand:
@@ -1511,12 +1479,67 @@ uint16_t GetPlayerSpriteWidth(HeroClass cls, player_graphic graphic, PlayerWeapo
 	app_fatal("Invalid player_graphic");
 }
 
+void GetPlayerGraphicsPath(std::string_view path, std::string_view prefix, std::string_view type, char out[256])
+{
+	*BufCopy(out, "plrgfx\\", path, "\\", prefix, "\\", prefix, type) = '\0';
+}
+
 } // namespace
+
+void InitLevelChange(Player &player)
+{
+	const Player &myPlayer = *MyPlayer;
+
+	RemoveEnemyReferences(player);
+	RemovePlrMissiles(player);
+	player.pManaShield = false;
+	player.wReflections = 0;
+	if (&player != MyPlayer) {
+		// share info about your manashield when another player joins the level
+		if (myPlayer.pManaShield)
+			NetSendCmd(true, CMD_SETSHIELD);
+		// share info about your reflect charges when another player joins the level
+		NetSendCmdParam1(true, CMD_SETREFLECT, myPlayer.wReflections);
+	} else if (qtextflag) {
+		qtextflag = false;
+		stream_stop();
+	}
+
+	FixPlrWalkTags(player);
+	SetPlayerOld(player);
+	if (IsLocalPlayer(player)) {
+		player.occupyTile(player.position.tile, false);
+	} else {
+		player._pLvlVisited[player.plrlevel] = true;
+	}
+
+	ClrPlrPath(player);
+	player.destAction = ACTION_NONE;
+	player._pLvlChanging = true;
+
+	if (IsLocalPlayer(player)) {
+		player.pLvlLoad = 10;
+	}
+}
+
+/**
+ * @brief Start moving a player to a new tile
+ */
+void StartWalk(Player &player, Direction dir, bool pmWillBeCalled)
+{
+	if (player._pInvincible && player._pHitPoints == 0 && IsLocalPlayer(player)) {
+		SyncPlrKill(player, DeathReason::Unknown);
+		return;
+	}
+
+	StartWalkAnimation(player, dir, pmWillBeCalled);
+	HandleWalkMode(player, dir);
+}
 
 void Player::CalcScrolls()
 {
 	_pScrlSpells = 0;
-	for (Item &item : InventoryAndBeltPlayerItemsRange { *this }) {
+	for (const Item &item : InventoryAndBeltPlayerItemsRange { *this }) {
 		if (item.isScroll() && item._iStatFlag) {
 			_pScrlSpells |= GetSpellBitmask(item._iSpell);
 		}
@@ -1539,7 +1562,7 @@ void Player::RemoveInvItem(int iv, bool calcScrolls)
 	if (this == MyPlayer) {
 		// Locate the first grid index containing this item and notify remote clients
 		for (size_t i = 0; i < InventoryGridCells; i++) {
-			int8_t itemIndex = InvGrid[i];
+			const int8_t itemIndex = InvGrid[i];
 			if (std::abs(itemIndex) - 1 == iv) {
 				NetSendCmdParam1(false, CMD_DELINVITEMS, static_cast<uint16_t>(i));
 				break;
@@ -1681,7 +1704,7 @@ int Player::GetPositionPathIndex(Point pos)
 
 void Player::Say(HeroSpeech speechId) const
 {
-	SfxID soundEffect = herosounds[static_cast<size_t>(_pClass)][static_cast<size_t>(speechId)];
+	const SfxID soundEffect = GetHeroSound(_pClass, speechId);
 
 	if (soundEffect == SfxID::None)
 		return;
@@ -1691,7 +1714,7 @@ void Player::Say(HeroSpeech speechId) const
 
 void Player::SaySpecific(HeroSpeech speechId) const
 {
-	SfxID soundEffect = herosounds[static_cast<size_t>(_pClass)][static_cast<size_t>(speechId)];
+	const SfxID soundEffect = GetHeroSound(_pClass, speechId);
 
 	if (soundEffect == SfxID::None || effect_is_playing(soundEffect))
 		return;
@@ -1702,7 +1725,7 @@ void Player::SaySpecific(HeroSpeech speechId) const
 void Player::Say(HeroSpeech speechId, int delay) const
 {
 	sfxdelay = delay;
-	sfxdnum = herosounds[static_cast<size_t>(_pClass)][static_cast<size_t>(speechId)];
+	sfxdnum = GetHeroSound(_pClass, speechId);
 }
 
 void Player::Stop()
@@ -1724,7 +1747,7 @@ int Player::GetManaShieldDamageReduction()
 
 void Player::RestorePartialLife()
 {
-	int wholeHitpoints = _pMaxHP >> 6;
+	const int wholeHitpoints = _pMaxHP >> 6;
 	int l = ((wholeHitpoints / 8) + GenerateRnd(wholeHitpoints / 4)) << 6;
 	if (IsAnyOf(_pClass, HeroClass::Warrior, HeroClass::Barbarian))
 		l *= 2;
@@ -1736,7 +1759,7 @@ void Player::RestorePartialLife()
 
 void Player::RestorePartialMana()
 {
-	int wholeManaPoints = _pMaxMana >> 6;
+	const int wholeManaPoints = _pMaxMana >> 6;
 	int l = ((wholeManaPoints / 8) + GenerateRnd(wholeManaPoints / 4)) << 6;
 	if (_pClass == HeroClass::Sorcerer)
 		l *= 2;
@@ -1750,7 +1773,7 @@ void Player::RestorePartialMana()
 
 void Player::ReadySpellFromEquipment(inv_body_loc bodyLocation, bool forceSpell)
 {
-	Item &item = InvBody[bodyLocation];
+	const Item &item = InvBody[bodyLocation];
 	if (item._itype == ItemType::Staff && IsValidSpell(item._iSpell) && item._iCharges > 0 && item._iStatFlag) {
 		if (forceSpell || _pRSpell == SpellID::Invalid || _pRSplType == SpellType::Invalid) {
 			_pRSpell = item._iSpell;
@@ -1848,19 +1871,19 @@ void Player::UpdatePreviewCelSprite(_cmd_id cmdId, Point point, uint16_t wParam1
 
 	switch (cmdId) {
 	case _cmd_id::CMD_RATTACKID: {
-		Monster &monster = Monsters[wParam1];
+		const Monster &monster = Monsters[wParam1];
 		dir = GetDirection(position.future, monster.position.future);
 		graphic = player_graphic::Attack;
 		break;
 	}
 	case _cmd_id::CMD_SPELLID: {
-		Monster &monster = Monsters[wParam1];
+		const Monster &monster = Monsters[wParam1];
 		dir = GetDirection(position.future, monster.position.future);
 		graphic = GetPlayerGraphicForSpell(static_cast<SpellID>(wParam2));
 		break;
 	}
 	case _cmd_id::CMD_ATTACKID: {
-		Monster &monster = Monsters[wParam1];
+		const Monster &monster = Monsters[wParam1];
 		point = monster.position.future;
 		minimalWalkDistance = 2;
 		if (!CanTalkToMonst(monster)) {
@@ -1870,19 +1893,19 @@ void Player::UpdatePreviewCelSprite(_cmd_id cmdId, Point point, uint16_t wParam1
 		break;
 	}
 	case _cmd_id::CMD_RATTACKPID: {
-		Player &targetPlayer = Players[wParam1];
+		const Player &targetPlayer = Players[wParam1];
 		dir = GetDirection(position.future, targetPlayer.position.future);
 		graphic = player_graphic::Attack;
 		break;
 	}
 	case _cmd_id::CMD_SPELLPID: {
-		Player &targetPlayer = Players[wParam1];
+		const Player &targetPlayer = Players[wParam1];
 		dir = GetDirection(position.future, targetPlayer.position.future);
 		graphic = GetPlayerGraphicForSpell(static_cast<SpellID>(wParam2));
 		break;
 	}
 	case _cmd_id::CMD_ATTACKPID: {
-		Player &targetPlayer = Players[wParam1];
+		const Player &targetPlayer = Players[wParam1];
 		point = targetPlayer.position.future;
 		minimalWalkDistance = 2;
 		dir = GetDirection(position.future, targetPlayer.position.future);
@@ -1923,7 +1946,7 @@ void Player::UpdatePreviewCelSprite(_cmd_id cmdId, Point point, uint16_t wParam1
 
 	if (minimalWalkDistance >= 0 && position.future != point) {
 		int8_t testWalkPath[MaxPathLengthPlayer];
-		int steps = FindPath(CanStep, [this](Point position) { return PosOkPlayer(*this, position); }, position.future, point, testWalkPath, MaxPathLengthPlayer);
+		const int steps = FindPath(CanStep, [this](Point tile) { return PosOkPlayer(*this, tile); }, position.future, point, testWalkPath, MaxPathLengthPlayer);
 		if (steps == 0) {
 			// Can't walk to desired location => stand still
 			return;
@@ -1965,7 +1988,7 @@ void Player::UpdatePreviewCelSprite(_cmd_id cmdId, Point point, uint16_t wParam1
 		return;
 
 	LoadPlrGFX(*this, *graphic);
-	ClxSpriteList sprites = AnimationData[static_cast<size_t>(*graphic)].spritesForDirection(dir);
+	const ClxSpriteList sprites = AnimationData[static_cast<size_t>(*graphic)].spritesForDirection(dir);
 	if (!previewCelSprite || *previewCelSprite != sprites[0]) {
 		previewCelSprite = sprites[0];
 		progressToNextGameTickWhenPreviewWasSet = ProgressToNextGameTick;
@@ -1999,11 +2022,11 @@ int32_t Player::calculateBaseMana() const
 	return attr.adjMana + (attr.lvlMana * getCharacterLevel()) + (attr.chrMana * _pBaseMag);
 }
 
-void Player::occupyTile(Point position, bool isMoving) const
+void Player::occupyTile(Point tilePosition, bool isMoving) const
 {
 	int16_t id = this->getId();
 	id += 1;
-	dPlayer[position.x][position.y] = isMoving ? -id : id;
+	dPlayer[tilePosition.x][tilePosition.y] = isMoving ? -id : id;
 }
 
 bool Player::isLevelOwnedByLocalClient() const
@@ -2039,6 +2062,53 @@ Player *PlayerAtPosition(Point position, bool ignoreMovingPlayers /*= false*/)
 	return &Players[std::abs(playerIndex) - 1];
 }
 
+ClxSprite GetPlayerPortraitSprite(Player &player)
+{
+	const bool inDungeon = (player.plrlevel != 0);
+
+	const HeroClass cls = GetPlayerSpriteClass(player._pClass);
+	const PlayerWeaponGraphic animWeaponId = GetPlayerWeaponGraphic(player_graphic::Stand, static_cast<PlayerWeaponGraphic>(player._pgfxnum & 0xF));
+
+	const PlayerSpriteData &spriteData = GetPlayerSpriteDataForClass(cls);
+	const char *path = spriteData.classPath.c_str();
+
+	std::string_view szCel = inDungeon ? "as" : "st";
+
+	player_graphic graphic = player_graphic::Stand;
+	if (player._pHitPoints <= 0) {
+		if (animWeaponId == PlayerWeaponGraphic::Unarmed) {
+			szCel = "dt";
+			graphic = player_graphic::Death;
+		}
+	}
+
+	const char prefixBuf[3] = { spriteData.classChar, ArmourChar[player._pgfxnum >> 4], WepChar[static_cast<std::size_t>(animWeaponId)] };
+	char pszName[256];
+	GetPlayerGraphicsPath(path, std::string_view(prefixBuf, 3), szCel, pszName);
+
+	const std::string spritePath { pszName };
+	// Check to see if the sprite has updated.
+	if (player.PartyInfoSpriteLocations[inDungeon] != spritePath) {
+		// The sprite has changed so store the new location
+		player.PartyInfoSpriteLocations[inDungeon] = spritePath;
+
+		player.PartyInfoSprites[inDungeon] = std::nullopt;
+
+		// And now load the new sprite and store it
+		const uint16_t animationWidth = GetPlayerSpriteWidth(cls, graphic, animWeaponId);
+		player.PartyInfoSprites[inDungeon] = LoadCl2Sheet(pszName, animationWidth);
+	}
+
+	const ClxSpriteList spriteList = (*player.PartyInfoSprites[inDungeon])[static_cast<size_t>(Direction::South)];
+	return spriteList[(graphic == player_graphic::Stand) ? 0 : spriteList.numSprites() - 1];
+}
+
+bool IsPlayerUnarmed(Player &player)
+{
+	const PlayerWeaponGraphic animWeaponId = GetPlayerWeaponGraphic(player_graphic::Stand, static_cast<PlayerWeaponGraphic>(player._pgfxnum & 0xF));
+	return animWeaponId == PlayerWeaponGraphic::Unarmed;
+}
+
 void LoadPlrGFX(Player &player, player_graphic graphic)
 {
 	if (HeadlessMode)
@@ -2051,9 +2121,10 @@ void LoadPlrGFX(Player &player, player_graphic graphic)
 	const HeroClass cls = GetPlayerSpriteClass(player._pClass);
 	const PlayerWeaponGraphic animWeaponId = GetPlayerWeaponGraphic(graphic, static_cast<PlayerWeaponGraphic>(player._pgfxnum & 0xF));
 
-	const char *path = PlayersSpriteData[static_cast<std::size_t>(cls)].classPath;
+	const PlayerSpriteData &spriteData = GetPlayerSpriteDataForClass(cls);
+	const char *path = spriteData.classPath.c_str();
 
-	const char *szCel;
+	std::string_view szCel;
 	switch (graphic) {
 	case player_graphic::Stand:
 		szCel = "as";
@@ -2100,9 +2171,9 @@ void LoadPlrGFX(Player &player, player_graphic graphic)
 		app_fatal("PLR:2");
 	}
 
-	char prefix[3] = { CharChar[static_cast<std::size_t>(cls)], ArmourChar[player._pgfxnum >> 4], WepChar[static_cast<std::size_t>(animWeaponId)] };
+	const char prefixBuf[3] = { spriteData.classChar, ArmourChar[player._pgfxnum >> 4], WepChar[static_cast<std::size_t>(animWeaponId)] };
 	char pszName[256];
-	*fmt::format_to(pszName, R"(plrgfx\{0}\{1}\{1}{2})", path, std::string_view(prefix, 3), szCel) = 0;
+	GetPlayerGraphicsPath(path, std::string_view(prefixBuf, 3), szCel, pszName);
 	const uint16_t animationWidth = GetPlayerSpriteWidth(cls, graphic, animWeaponId);
 	animationData.sprites = LoadCl2Sheet(pszName, animationWidth);
 	std::optional<std::array<uint8_t, 256>> graphicTRN = GetPlayerGraphicTRN(pszName);
@@ -2139,6 +2210,12 @@ void InitPlayerGFX(Player &player)
 void ResetPlayerGFX(Player &player)
 {
 	player.AnimInfo.sprites = std::nullopt;
+
+	if (!gbRunGame) {
+		player.PartyInfoSprites[0] = std::nullopt;
+		player.PartyInfoSprites[1] = std::nullopt;
+	}
+
 	for (PlayerAnimationData &animData : player.AnimationData) {
 		animData.sprites = std::nullopt;
 	}
@@ -2165,8 +2242,8 @@ void NewPlrAnim(Player &player, player_graphic graphic, Direction dir, Animation
 
 void SetPlrAnims(Player &player)
 {
-	HeroClass pc = player._pClass;
-	PlayerAnimData plrAtkAnimData = PlayersAnimData[static_cast<uint8_t>(pc)];
+	const HeroClass pc = player._pClass;
+	const PlayerAnimData &plrAtkAnimData = GetPlayerAnimDataForClass(pc);
 	auto gn = static_cast<PlayerWeaponGraphic>(player._pgfxnum & 0xFU);
 
 	if (leveltype == DTYPE_TOWN) {
@@ -2220,7 +2297,7 @@ void SetPlrAnims(Player &player)
 	player._pDFrames = plrAtkAnimData.deathFrames;
 	player._pSFrames = plrAtkAnimData.castingFrames;
 	player._pSFNum = plrAtkAnimData.castingActionFrame;
-	int armorGraphicIndex = player._pgfxnum & ~0xFU;
+	const int armorGraphicIndex = player._pgfxnum & ~0xFU;
 	if (IsAnyOf(pc, HeroClass::Warrior, HeroClass::Barbarian)) {
 		if (gn == PlayerWeaponGraphic::Bow && leveltype != DTYPE_TOWN)
 			player._pNFrames = 8;
@@ -2324,18 +2401,18 @@ void NextPlrLevel(Player &player)
 	} else {
 		player._pStatPts += 5;
 	}
-	int hp = player.getClassAttributes().lvlLife;
+	const int hp = player.getClassAttributes().lvlLife;
 
 	player._pMaxHP += hp;
 	player._pHitPoints = player._pMaxHP;
 	player._pMaxHPBase += hp;
 	player._pHPBase = player._pMaxHPBase;
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		RedrawComponent(PanelDrawComponent::Health);
 	}
 
-	int mana = player.getClassAttributes().lvlMana;
+	const int mana = player.getClassAttributes().lvlMana;
 
 	player._pMaxMana += mana;
 	player._pMaxManaBase += mana;
@@ -2345,7 +2422,7 @@ void NextPlrLevel(Player &player)
 		player._pManaBase = player._pMaxManaBase;
 	}
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		RedrawComponent(PanelDrawComponent::Mana);
 	}
 
@@ -2404,7 +2481,7 @@ void AddPlrMonstExper(int lvl, unsigned exp, char pmask)
 	}
 
 	if (totplrs != 0) {
-		unsigned e = exp / totplrs;
+		const unsigned e = exp / totplrs;
 		if ((pmask & (1 << MyPlayerId)) != 0)
 			MyPlayer->addExperience(e, lvl);
 	}
@@ -2415,7 +2492,7 @@ void InitPlayer(Player &player, bool firstTime)
 	if (firstTime) {
 		player._pRSplType = SpellType::Invalid;
 		player._pRSpell = SpellID::Invalid;
-		if (&player == MyPlayer)
+		if (IsLocalPlayer(player))
 			LoadHotkeys();
 		player._pSBkSpell = SpellID::Invalid;
 		player.queuedSpell.spellId = player._pRSpell;
@@ -2444,15 +2521,19 @@ void InitPlayer(Player &player, bool firstTime)
 
 		player._pdir = Direction::South;
 
-		if (&player == MyPlayer && (!firstTime || leveltype != DTYPE_TOWN)) {
-			player.position.tile = ViewPosition;
+		if ((!firstTime || leveltype != DTYPE_TOWN)) {
+			// Set spawn position for local players (MyPlayer and local coop players)
+			if (IsLocalPlayer(player)) {
+				player.position.tile = ViewPosition;
+			}
 		}
 
 		SetPlayerOld(player);
 		player.walkpath[0] = WALK_NONE;
 		player.destAction = ACTION_NONE;
 
-		if (&player == MyPlayer) {
+		// Set up lighting for local players (MyPlayer and local coop players)
+		if (IsLocalPlayer(player)) {
 			player.lightId = AddLight(player.position.tile, player._pLightRad);
 			ChangeLightXY(player.lightId, player.position.tile); // fix for a bug where old light is still visible at the entrance after reentering level
 		} else {
@@ -2465,7 +2546,7 @@ void InitPlayer(Player &player, bool firstTime)
 
 	player._pInvincible = false;
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		MyPlayerIsDead = false;
 	}
 }
@@ -2473,7 +2554,19 @@ void InitPlayer(Player &player, bool firstTime)
 void InitMultiView()
 {
 	assert(MyPlayer != nullptr);
-	ViewPosition = MyPlayer->position.tile;
+
+	// In local co-op mode with initialized players, center view on all players
+	// Otherwise just use MyPlayer's position
+	if (IsAnyLocalCoopPlayerInitialized()) {
+		// Calculate center position of all active local coop players
+		Point centerPos = CalculateLocalCoopViewPosition();
+		ViewPosition = centerPos;
+
+		// Reset camera smoothing to snap to new position
+		ResetLocalCoopCamera();
+	} else {
+		ViewPosition = MyPlayer->position.tile;
+	}
 }
 
 void PlrClrTrans(Point position)
@@ -2510,8 +2603,12 @@ void FixPlayerLocation(Player &player, Direction bDir)
 {
 	player.position.future = player.position.tile;
 	player._pdir = bDir;
-	if (&player == MyPlayer) {
-		ViewPosition = player.position.tile;
+	if (IsLocalPlayer(player)) {
+		// In local co-op mode with spawned players, let UpdateLocalCoopCamera handle ViewPosition
+		// to center the view between all players instead of just following Player 1
+		if (!IsAnyLocalCoopPlayerInitialized()) {
+			ViewPosition = player.position.tile;
+		}
 	}
 	ChangeLightXY(player.lightId, player.position.tile);
 	ChangeVisionXY(player.getId(), player.position.tile);
@@ -2519,7 +2616,7 @@ void FixPlayerLocation(Player &player, Direction bDir)
 
 void StartStand(Player &player, Direction dir)
 {
-	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
+	if (player._pInvincible && player._pHitPoints == 0 && IsLocalPlayer(player)) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
 	}
@@ -2534,7 +2631,7 @@ void StartStand(Player &player, Direction dir)
 
 void StartPlrBlock(Player &player, Direction dir)
 {
-	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
+	if (player._pInvincible && player._pHitPoints == 0 && IsLocalPlayer(player)) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
 	}
@@ -2568,7 +2665,7 @@ void FixPlrWalkTags(const Player &player)
 
 void StartPlrHit(Player &player, int dam, bool forcehit)
 {
-	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
+	if (player._pInvincible && player._pHitPoints == 0 && IsLocalPlayer(player)) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
 	}
@@ -2584,7 +2681,7 @@ void StartPlrHit(Player &player, int dam, bool forcehit)
 		return;
 	}
 
-	Direction pd = player._pdir;
+	const Direction pd = player._pdir;
 
 	int8_t skippedAnimationFrames = 0;
 	if (HasAnyOf(player._pIFlags, ItemSpecialEffect::FastestHitRecovery)) {
@@ -2616,7 +2713,7 @@ StartPlayerKill(Player &player, DeathReason deathReason)
 		return;
 	}
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		NetSendCmdParam1(true, CMD_PLRDEAD, static_cast<uint16_t>(deathReason));
 		gamemenu_off();
 	}
@@ -2647,7 +2744,7 @@ StartPlayerKill(Player &player, DeathReason deathReason)
 	player._pInvincible = true;
 	SetPlayerHitPoints(player, 0);
 
-	if (&player != MyPlayer && dropItems) {
+	if (!IsLocalPlayer(player) && dropItems) {
 		// Ensure that items are removed for remote players
 		// The dropped items will be synced separately (by the remote client)
 		for (Item &item : player.InvBody) {
@@ -2664,7 +2761,7 @@ StartPlayerKill(Player &player, DeathReason deathReason)
 
 		// Only generate drops once (for the local player)
 		// For remote players we get separated sync messages (by the remote client)
-		if (&player == MyPlayer) {
+		if (IsLocalPlayer(player)) {
 			RedrawComponent(PanelDrawComponent::Health);
 
 			if (!player.HoldItem.isEmpty()) {
@@ -2691,6 +2788,8 @@ StartPlayerKill(Player &player, DeathReason deathReason)
 				case HeroClass::Bard:
 				case HeroClass::Barbarian:
 					ear._iCurs = ICURS_EAR_ROGUE;
+					break;
+				default:
 					break;
 				}
 
@@ -2743,7 +2842,7 @@ void StripTopGold(Player &player)
 		return;
 	if (AutoPlaceItemInBelt(player, player.HoldItem))
 		return;
-	std::optional<Point> itemTile = FindAdjacentPositionForItem(player.position.tile, player._pdir);
+	const std::optional<Point> itemTile = FindAdjacentPositionForItem(player.position.tile, player._pdir);
 	if (itemTile)
 		return;
 	DeadItem(player, std::move(player.HoldItem), { 0, 0 });
@@ -2753,15 +2852,15 @@ void StripTopGold(Player &player)
 void ApplyPlrDamage(DamageType damageType, Player &player, int dam, int minHP /*= 0*/, int frac /*= 0*/, DeathReason deathReason /*= DeathReason::MonsterOrTrap*/)
 {
 	int totalDamage = (dam << 6) + frac;
-	if (&player == MyPlayer && player._pHitPoints > 0) {
+	if (IsLocalPlayer(player) && player._pHitPoints > 0) {
 		AddFloatingNumber(damageType, player, totalDamage);
 	}
 	if (totalDamage > 0 && player.pManaShield && HasNoneOf(player._pIFlags, ItemSpecialEffect::NoMana)) {
-		uint8_t manaShieldLevel = player._pSplLvl[static_cast<int8_t>(SpellID::ManaShield)];
+		const uint8_t manaShieldLevel = player._pSplLvl[static_cast<int8_t>(SpellID::ManaShield)];
 		if (manaShieldLevel > 0) {
 			totalDamage += totalDamage / -player.GetManaShieldDamageReduction();
 		}
-		if (&player == MyPlayer)
+		if (IsLocalPlayer(player))
 			RedrawComponent(PanelDrawComponent::Mana);
 		if (player._pMana >= totalDamage) {
 			player._pMana -= totalDamage;
@@ -2774,7 +2873,7 @@ void ApplyPlrDamage(DamageType damageType, Player &player, int dam, int minHP /*
 			}
 			player._pMana = 0;
 			player._pManaBase = player._pMaxManaBase - player._pMaxMana;
-			if (&player == MyPlayer)
+			if (IsLocalPlayer(player))
 				NetSendCmd(true, CMD_REMSHIELD);
 		}
 	}
@@ -2789,7 +2888,7 @@ void ApplyPlrDamage(DamageType damageType, Player &player, int dam, int minHP /*
 		player._pHitPoints = player._pMaxHP;
 		player._pHPBase = player._pMaxHPBase;
 	}
-	int minHitPoints = minHP << 6;
+	const int minHitPoints = minHP << 6;
 	if (player._pHitPoints < minHitPoints) {
 		SetPlayerHitPoints(player, minHitPoints);
 	}
@@ -2811,16 +2910,10 @@ void SyncPlrKill(Player &player, DeathReason deathReason)
 
 void RemovePlrMissiles(const Player &player)
 {
-	if (leveltype != DTYPE_TOWN && &player == MyPlayer) {
-		Monster &golem = Monsters[MyPlayerId];
-		if (golem.position.tile.x != 1 || golem.position.tile.y != 0) {
-			KillMyGolem();
-			AddCorpse(golem.position.tile, golem.type().corpseId, golem.direction);
-			int mx = golem.position.tile.x;
-			int my = golem.position.tile.y;
-			dMonster[mx][my] = 0;
-			golem.isInvalid = true;
-			DeleteMonsterList();
+	if (leveltype != DTYPE_TOWN) {
+		Monster *golem;
+		while ((golem = FindGolemForPlayer(player)) != nullptr) {
+			KillGolem(*golem);
 		}
 	}
 
@@ -2847,7 +2940,7 @@ StartNewLvl(Player &player, interface_mode fom, int lvl)
 		player.setLevel(lvl);
 		break;
 	case WM_DIABSETLVL:
-		if (&player == MyPlayer)
+		if (IsLocalPlayer(player))
 			setlvlnum = (_setlevels)lvl;
 		player.setLevel(setlvlnum);
 		break;
@@ -2861,11 +2954,16 @@ StartNewLvl(Player &player, interface_mode fom, int lvl)
 		app_fatal("StartNewLvl");
 	}
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		player._pmode = PM_NEWLVL;
 		player._pInvincible = true;
+
+		// In local co-op, sync all local coop players to the same level
+		// They share the same screen and must always be on the same level
+		SyncLocalCoopPlayersToLevel(fom, lvl);
+
 		SDL_Event event;
-		event.type = CustomEventToSdlEvent(fom);
+		CustomEventToSdlEvent(event, fom);
 		SDL_PushEvent(&event);
 		if (gbIsMultiplayer) {
 			NetSendCmdParam2(true, CMD_NEWLVL, fom, lvl);
@@ -2888,10 +2986,10 @@ void RestartTownLvl(Player &player)
 	CalcPlrInv(player, false);
 	player._pmode = PM_NEWLVL;
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		player._pInvincible = true;
 		SDL_Event event;
-		event.type = CustomEventToSdlEvent(WM_DIABRETOWN);
+		CustomEventToSdlEvent(event, WM_DIABRETOWN);
 		SDL_PushEvent(&event);
 	}
 }
@@ -2911,12 +3009,12 @@ void StartWarpLvl(Player &player, size_t pidx)
 		}
 	}
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		SetCurrentPortal(pidx);
 		player._pmode = PM_NEWLVL;
 		player._pInvincible = true;
 		SDL_Event event;
-		event.type = CustomEventToSdlEvent(WM_DIABWARPLVL);
+		CustomEventToSdlEvent(event, WM_DIABWARPLVL);
 		SDL_PushEvent(&event);
 	}
 }
@@ -2956,12 +3054,12 @@ void ProcessPlayers()
 
 	for (size_t pnum = 0; pnum < Players.size(); pnum++) {
 		Player &player = Players[pnum];
-		if (player.plractive && player.isOnActiveLevel() && (&player == MyPlayer || !player._pLvlChanging)) {
+		if (player.plractive && player.isOnActiveLevel() && (IsLocalPlayer(player) || !player._pLvlChanging)) {
 			if (!PlrDeathModeOK(player) && (player._pHitPoints >> 6) <= 0) {
 				SyncPlrKill(player, DeathReason::Unknown);
 			}
 
-			if (&player == MyPlayer) {
+			if (IsLocalPlayer(player)) {
 				if (HasAnyOf(player._pIFlags, ItemSpecialEffect::DrainLife) && leveltype != DTYPE_TOWN) {
 					ApplyPlrDamage(DamageType::Physical, player, 0, 0, 4);
 				}
@@ -3136,21 +3234,21 @@ void CheckPlrSpell(bool isShiftHeld, SpellID spellID, SpellType spellType)
 				myPlayer.Say(HeroSpeech::ICantDoThat);
 				break;
 			}
-			LastMouseButtonAction = MouseActionType::None;
+			LastPlayerAction = PlayerActionType::None;
 		}
 		return;
 	}
 
 	const int spellFrom = 0;
 	if (IsWallSpell(spellID)) {
-		LastMouseButtonAction = MouseActionType::Spell;
-		Direction sd = GetDirection(myPlayer.position.tile, cursPosition);
+		LastPlayerAction = PlayerActionType::Spell;
+		const Direction sd = GetDirection(myPlayer.position.tile, cursPosition);
 		NetSendCmdLocParam4(true, CMD_SPELLXYD, cursPosition, static_cast<int8_t>(spellID), static_cast<uint8_t>(spellType), static_cast<uint16_t>(sd), spellFrom);
 	} else if (pcursmonst != -1 && !isShiftHeld) {
-		LastMouseButtonAction = MouseActionType::SpellMonsterTarget;
+		LastPlayerAction = PlayerActionType::SpellMonsterTarget;
 		NetSendCmdParam4(true, CMD_SPELLID, pcursmonst, static_cast<int8_t>(spellID), static_cast<uint8_t>(spellType), spellFrom);
 	} else if (PlayerUnderCursor != nullptr && !isShiftHeld && !myPlayer.friendlyMode) {
-		LastMouseButtonAction = MouseActionType::SpellPlayerTarget;
+		LastPlayerAction = PlayerActionType::SpellPlayerTarget;
 		NetSendCmdParam4(true, CMD_SPELLPID, PlayerUnderCursor->getId(), static_cast<int8_t>(spellID), static_cast<uint8_t>(spellType), spellFrom);
 	} else {
 		Point targetedTile = cursPosition;
@@ -3158,12 +3256,12 @@ void CheckPlrSpell(bool isShiftHeld, SpellID spellID, SpellType spellType)
 			// Check if the player is attempting to queue Teleport onto a tile that is currently being targeted with Teleport, or a nearby tile
 			if (cursPosition.WalkingDistance(myPlayer.position.temp) <= 1) {
 				// Get the relative displacement from the player's current position to the cursor position
-				WorldTileDisplacement relativeMove = cursPosition - static_cast<Point>(myPlayer.position.tile);
+				const WorldTileDisplacement relativeMove = cursPosition - static_cast<Point>(myPlayer.position.tile);
 				// Target the tile the relative distance away from the player's targeted Teleport tile
 				targetedTile = myPlayer.position.temp + relativeMove;
 			}
 		}
-		LastMouseButtonAction = MouseActionType::Spell;
+		LastPlayerAction = PlayerActionType::Spell;
 		NetSendCmdLocParam3(true, CMD_SPELLXY, targetedTile, static_cast<int8_t>(spellID), static_cast<uint8_t>(spellType), spellFrom);
 	}
 }
@@ -3182,14 +3280,14 @@ void SyncInitPlrPos(Player &player)
 
 	const WorldTileDisplacement offset[9] = { { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 }, { 2, 0 }, { 0, 2 }, { 1, 2 }, { 2, 1 }, { 2, 2 } };
 
-	Point position = [&]() {
+	const Point position = [&]() {
 		for (int i = 0; i < 8; i++) {
 			Point position = player.position.tile + offset[i];
 			if (PosOkPlayer(player, position))
 				return position;
 		}
 
-		std::optional<Point> nearPosition = FindClosestValidPosition(
+		const std::optional<Point> nearPosition = FindClosestValidPosition(
 		    [&player](Point testPosition) {
 			    for (int i = 0; i < numtrigs; i++) {
 				    if (trigs[i].position == testPosition)
@@ -3208,8 +3306,12 @@ void SyncInitPlrPos(Player &player)
 	player.occupyTile(position, false);
 	player.position.future = position;
 
-	if (&player == MyPlayer) {
-		ViewPosition = position;
+	if (IsLocalPlayer(player)) {
+		// In local co-op mode with spawned players, let UpdateLocalCoopCamera handle ViewPosition
+		// to center the view between all players instead of just following Player 1
+		if (!IsAnyLocalCoopPlayerInitialized()) {
+			ViewPosition = position;
+		}
 	}
 }
 
@@ -3224,7 +3326,7 @@ void SyncInitPlr(Player &player)
 void CheckStats(Player &player)
 {
 	for (auto attribute : enum_values<CharacterAttribute>()) {
-		int maxStatPoint = player.GetMaximumAttributeValue(attribute);
+		const int maxStatPoint = player.GetMaximumAttributeValue(attribute);
 		switch (attribute) {
 		case CharacterAttribute::Strength:
 			player._pBaseStr = std::clamp(player._pBaseStr, 0, maxStatPoint);
@@ -3251,7 +3353,7 @@ void ModifyPlrStr(Player &player, int l)
 
 	CalcPlrInv(player, true);
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		NetSendCmdParam1(false, CMD_SETSTR, player._pBaseStr);
 	}
 }
@@ -3275,7 +3377,7 @@ void ModifyPlrMag(Player &player, int l)
 
 	CalcPlrInv(player, true);
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		NetSendCmdParam1(false, CMD_SETMAG, player._pBaseMag);
 	}
 }
@@ -3288,7 +3390,7 @@ void ModifyPlrDex(Player &player, int l)
 	player._pBaseDex += l;
 	CalcPlrInv(player, true);
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		NetSendCmdParam1(false, CMD_SETDEX, player._pBaseDex);
 	}
 }
@@ -3310,7 +3412,7 @@ void ModifyPlrVit(Player &player, int l)
 
 	CalcPlrInv(player, true);
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		NetSendCmdParam1(false, CMD_SETVIT, player._pBaseVit);
 	}
 }
@@ -3320,7 +3422,7 @@ void SetPlayerHitPoints(Player &player, int val)
 	player._pHitPoints = val;
 	player._pHPBase = val + player._pMaxHPBase - player._pMaxHP;
 
-	if (&player == MyPlayer) {
+	if (IsLocalPlayer(player)) {
 		RedrawComponent(PanelDrawComponent::Health);
 	}
 }

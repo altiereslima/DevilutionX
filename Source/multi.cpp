@@ -3,34 +3,49 @@
  *
  * Implementation of functions for keeping multiplaye games in sync.
  */
+#include "multi.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string_view>
 
+#ifdef USE_SDL3
+#include <SDL3/SDL_endian.h>
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_timer.h>
+#else
 #include <SDL.h>
+#endif
+
 #include <config.h>
 #include <fmt/format.h>
 
 #include "DiabloUI/diabloui.h"
+#include "controls/local_coop.hpp"
 #include "diablo.h"
 #include "engine/demomode.h"
 #include "engine/point.hpp"
 #include "engine/random.hpp"
 #include "engine/world_tile.hpp"
+#include "game_mode.hpp"
 #include "menu.h"
+#include "monster.h"
+#include "msg.h"
 #include "nthread.h"
 #include "options.h"
 #include "pfile.h"
+#include "player.h"
 #include "plrmsg.h"
 #include "qol/chatlog.h"
 #include "storm/storm_net.hpp"
 #include "sync.h"
 #include "tmsg.h"
 #include "utils/endian_read.hpp"
+#include "utils/endian_swap.hpp"
 #include "utils/is_of.hpp"
 #include "utils/language.h"
+#include "utils/log.hpp"
 #include "utils/str_cat.hpp"
 
 namespace devilution {
@@ -46,7 +61,7 @@ bool sgbSendDeltaTbl[MAX_PLRS];
 GameData sgGameInitInfo;
 bool gbSelectProvider;
 int sglTimeoutStart;
-uint32_t sgdwPlayerLeftReasonTbl[MAX_PLRS];
+leaveinfo_t sgdwPlayerLeftReasonTbl[MAX_PLRS];
 uint32_t sgdwGameLoops;
 /**
  * Specifies the maximum number of players in a game, where 1
@@ -75,12 +90,12 @@ const event_type EventTypes[3] = {
 
 void GameData::swapLE()
 {
-	size = SDL_SwapLE32(size);
-	programid = SDL_SwapLE32(programid);
-	gameSeed[0] = SDL_SwapLE32(gameSeed[0]);
-	gameSeed[1] = SDL_SwapLE32(gameSeed[1]);
-	gameSeed[2] = SDL_SwapLE32(gameSeed[2]);
-	gameSeed[3] = SDL_SwapLE32(gameSeed[3]);
+	size = Swap32LE(size);
+	programid = Swap32LE(programid);
+	gameSeed[0] = Swap32LE(gameSeed[0]);
+	gameSeed[1] = Swap32LE(gameSeed[1]);
+	gameSeed[2] = Swap32LE(gameSeed[2]);
+	gameSeed[3] = Swap32LE(gameSeed[3]);
 }
 
 namespace {
@@ -159,10 +174,10 @@ void NetReceivePlayerData(TPkt *pkt)
 	pkt->hdr.py = myPlayer.position.tile.y;
 	pkt->hdr.targx = target.x;
 	pkt->hdr.targy = target.y;
-	pkt->hdr.php = SDL_SwapLE32(myPlayer._pHitPoints);
-	pkt->hdr.pmhp = SDL_SwapLE32(myPlayer._pMaxHP);
-	pkt->hdr.mana = SDL_SwapLE32(myPlayer._pMana);
-	pkt->hdr.maxmana = SDL_SwapLE32(myPlayer._pMaxMana);
+	pkt->hdr.php = Swap32LE(myPlayer._pHitPoints);
+	pkt->hdr.pmhp = Swap32LE(myPlayer._pMaxHP);
+	pkt->hdr.mana = Swap32LE(myPlayer._pMana);
+	pkt->hdr.maxmana = Swap32LE(myPlayer._pMaxMana);
 	pkt->hdr.bstr = myPlayer._pBaseStr;
 	pkt->hdr.bmag = myPlayer._pBaseMag;
 	pkt->hdr.bdex = myPlayer._pBaseDex;
@@ -172,7 +187,7 @@ bool IsNetPlayerValid(const Player &player)
 {
 	// we no longer check character level here, players with out-of-range clevels are not allowed to join the game and we don't observe change clevel messages that would set it out of range
 	// (there's no code path that would result in _pLevel containing an out of range value in the DevilutionX code)
-	return static_cast<uint8_t>(player._pClass) < enum_size<HeroClass>::value
+	return static_cast<uint8_t>(player._pClass) < GetNumPlayerClasses()
 	    && player.plrlevel < NUMLEVELS
 	    && InDungeonBounds(player.position.tile)
 	    && !std::string_view(player._pName).empty();
@@ -187,8 +202,8 @@ void CheckPlayerInfoTimeouts()
 		}
 
 		Uint32 &timerStart = playerInfoTimers[i];
-		bool isPlayerConnected = (player_state[i] & PS_CONNECTED) != 0;
-		bool isPlayerValid = isPlayerConnected && IsNetPlayerValid(player);
+		const bool isPlayerConnected = (player_state[i] & PS_CONNECTED) != 0;
+		const bool isPlayerValid = isPlayerConnected && IsNetPlayerValid(player);
 		if (isPlayerConnected && !isPlayerValid && timerStart == 0) {
 			timerStart = SDL_GetTicks();
 		}
@@ -203,7 +218,7 @@ void CheckPlayerInfoTimeouts()
 		// Time the player out after 15 seconds
 		// if we do not receive valid player info
 		if (SDL_GetTicks() - timerStart >= 15000) {
-			SNetDropPlayer(i, LEAVE_DROP);
+			SNetDropPlayer(i, leaveinfo_t::LEAVE_DROP);
 			timerStart = 0;
 		}
 	}
@@ -215,7 +230,7 @@ void SendPacket(uint8_t playerId, const std::byte *packet, size_t size)
 
 	NetReceivePlayerData(&pkt);
 	const size_t sizeWithheader = size + sizeof(pkt.hdr);
-	pkt.hdr.wLen = SDL_SwapLE16(static_cast<uint16_t>(sizeWithheader));
+	pkt.hdr.wLen = Swap16LE(static_cast<uint16_t>(sizeWithheader));
 	memcpy(pkt.body, packet, size);
 	if (!SNetSendMessage(playerId, &pkt.hdr, sizeWithheader))
 		nthread_terminate_game("SNetSendMessage0");
@@ -272,17 +287,29 @@ void PlayerLeftMsg(Player &player, bool left)
 	RemovePortalMissile(player);
 	DeactivatePortal(player);
 	delta_close_portal(player);
+	RemoveEnemyReferences(player);
 	RemovePlrMissiles(player);
 	if (left) {
+		const leaveinfo_t leaveReason = sgdwPlayerLeftReasonTbl[player.getId()];
+		const std::string reasonDescription = DescribeLeaveReason(leaveReason);
 		std::string_view pszFmt = _("Player '{:s}' just left the game");
-		switch (sgdwPlayerLeftReasonTbl[player.getId()]) {
-		case LEAVE_ENDING:
+		switch (leaveReason) {
+		case leaveinfo_t::LEAVE_EXIT:
+			break;
+		case leaveinfo_t::LEAVE_ENDING:
 			pszFmt = _("Player '{:s}' killed Diablo and left the game!");
 			gbSomebodyWonGameKludge = true;
 			break;
-		case LEAVE_DROP:
+		case leaveinfo_t::LEAVE_DROP:
 			pszFmt = _("Player '{:s}' dropped due to timeout");
 			break;
+		}
+		if (!IsLoopback) {
+			const uint8_t remainingPlayers = gbActivePlayers > 0 ? gbActivePlayers - 1 : 0;
+			if (player._pName[0] != '\0')
+				LogInfo("Player '{}' left the {} game ({}, {}/{} players)", player._pName, ConnectionNames[provider], reasonDescription, remainingPlayers, MAX_PLRS);
+			else
+				LogInfo("Player left the {} game ({}, {}/{} players)", ConnectionNames[provider], reasonDescription, remainingPlayers, MAX_PLRS);
 		}
 		EventPlrMsg(fmt::format(fmt::runtime(pszFmt), player._pName));
 	}
@@ -302,7 +329,7 @@ void ClearPlayerLeftState()
 				PlayerLeftMsg(Players[i], true);
 
 			sgbPlayerLeftGameTbl[i] = false;
-			sgdwPlayerLeftReasonTbl[i] = 0;
+			sgdwPlayerLeftReasonTbl[i] = static_cast<leaveinfo_t>(0);
 		}
 	}
 }
@@ -311,7 +338,7 @@ void CheckDropPlayer()
 {
 	for (uint8_t i = 0; i < Players.size(); i++) {
 		if ((player_state[i] & PS_ACTIVE) == 0 && (player_state[i] & PS_CONNECTED) != 0) {
-			SNetDropPlayer(i, LEAVE_DROP);
+			SNetDropPlayer(i, leaveinfo_t::LEAVE_DROP);
 		}
 	}
 }
@@ -342,7 +369,7 @@ void BeginTimeout()
 void HandleAllPackets(uint8_t pnum, const std::byte *data, size_t size)
 {
 	for (size_t offset = 0; offset < size;) {
-		size_t messageSize = ParseCmd(pnum, reinterpret_cast<const TCmd *>(&data[offset]));
+		const size_t messageSize = ParseCmd(pnum, reinterpret_cast<const TCmd *>(&data[offset]), size - offset);
 		if (messageSize == 0) {
 			break;
 		}
@@ -354,7 +381,7 @@ void ProcessTmsgs()
 {
 	while (true) {
 		std::unique_ptr<std::byte[]> msg;
-		uint8_t size = tmsg_get(&msg);
+		const uint8_t size = tmsg_get(&msg);
 		if (size == 0)
 			break;
 
@@ -365,7 +392,7 @@ void ProcessTmsgs()
 void SendPlayerInfo(uint8_t pnum, _cmd_id cmd)
 {
 	PlayerNetPack packed;
-	Player &myPlayer = *MyPlayer;
+	const Player &myPlayer = *MyPlayer;
 	PackNetPlayer(packed, myPlayer);
 	multi_send_zero_packet(pnum, cmd, reinterpret_cast<std::byte *>(&packed), sizeof(PlayerNetPack));
 }
@@ -408,13 +435,14 @@ void HandleEvents(_SNETEVENT *pEvt)
 		sgbPlayerLeftGameTbl[playerId] = true;
 		sgbPlayerTurnBitTbl[playerId] = false;
 
-		int32_t leftReason = 0;
-		if (pEvt->data != nullptr && pEvt->databytes >= sizeof(leftReason)) {
-			std::memcpy(&leftReason, pEvt->data, sizeof(leftReason));
-			leftReason = SDL_SwapLE32(leftReason);
+		uint32_t leftReasonRaw = 0;
+		if (pEvt->data != nullptr && pEvt->databytes >= sizeof(leftReasonRaw)) {
+			std::memcpy(&leftReasonRaw, pEvt->data, sizeof(leftReasonRaw));
+			leftReasonRaw = Swap32LE(leftReasonRaw);
 		}
+		leaveinfo_t leftReason = static_cast<leaveinfo_t>(leftReasonRaw);
 		sgdwPlayerLeftReasonTbl[playerId] = leftReason;
-		if (leftReason == LEAVE_ENDING)
+		if (leftReason == leaveinfo_t::LEAVE_ENDING)
 			gbSomebodyWonGameKludge = true;
 
 		sgbSendDeltaTbl[playerId] = false;
@@ -450,6 +478,8 @@ void UnregisterNetEventHandlers()
 
 bool InitSingle(GameData *gameData)
 {
+	// Local co-op is only available in multiplayer games
+	// Single player games use standard single player mode
 	Players.resize(1);
 
 	if (!SNetInitializeProvider(SELCONN_LOOPBACK, gameData)) {
@@ -470,12 +500,22 @@ bool InitSingle(GameData *gameData)
 
 	pfile_read_player_from_save(gSaveNumber, *MyPlayer);
 
+	// Load available heroes for local co-op players
+	LoadAvailableHeroesForAllLocalCoopPlayers();
+
 	return true;
 }
 
 bool InitMulti(GameData *gameData)
 {
-	Players.resize(MAX_PLRS);
+	// Check if local co-op is available (multiple controllers)
+	if (IsLocalCoopAvailable()) {
+		InitLocalCoop();
+		// Resize players array to accommodate all local players
+		Players.resize(GetLocalCoopTotalPlayerCount());
+	} else {
+		Players.resize(MAX_PLRS);
+	}
 
 	int playerId;
 
@@ -501,14 +541,37 @@ bool InitMulti(GameData *gameData)
 
 	pfile_read_player_from_save(gSaveNumber, *MyPlayer);
 
+	// Load available heroes for local co-op players
+	LoadAvailableHeroesForAllLocalCoopPlayers();
+
 	return true;
 }
 
 } // namespace
 
+DVL_API_FOR_TEST std::string DescribeLeaveReason(leaveinfo_t leaveReason)
+{
+	switch (leaveReason) {
+	case leaveinfo_t::LEAVE_EXIT:
+		return "normal exit";
+	case leaveinfo_t::LEAVE_ENDING:
+		return "Diablo defeated";
+	case leaveinfo_t::LEAVE_DROP:
+		return "connection timeout";
+	default:
+		return fmt::format("code 0x{:08X}", static_cast<uint32_t>(leaveReason));
+	}
+}
+
+std::string FormatGameSeed(const uint32_t gameSeed[4])
+{
+	return fmt::format("{:08X}{:08X}{:08X}{:08X}",
+	    gameSeed[0], gameSeed[1], gameSeed[2], gameSeed[3]);
+}
+
 void InitGameInfo()
 {
-	xoshiro128plusplus gameGenerator = ReserveSeedSequence();
+	const xoshiro128plusplus gameGenerator = ReserveSeedSequence();
 	gameGenerator.save(sgGameInitInfo.gameSeed);
 
 	sgGameInitInfo.size = sizeof(sgGameInitInfo);
@@ -549,7 +612,7 @@ void NetSendHiPri(uint8_t playerId, const std::byte *data, size_t size)
 		destination = CopyBufferedPackets(destination, &lowPriorityBuffer, &remainingSpace);
 		remainingSpace = sync_all_monsters(destination, remainingSpace);
 		const size_t len = gdwNormalMsgSize - remainingSpace;
-		pkt.hdr.wLen = SDL_SwapLE16(static_cast<uint16_t>(len));
+		pkt.hdr.wLen = Swap16LE(static_cast<uint16_t>(len));
 		if (!SNetSendMessage(SNPLAYER_OTHERS, &pkt.hdr, len))
 			nthread_terminate_game("SNetSendMessage");
 	}
@@ -560,7 +623,7 @@ void multi_send_msg_packet(uint32_t pmask, const std::byte *data, size_t size)
 	TPkt pkt;
 	NetReceivePlayerData(&pkt);
 	const size_t len = size + sizeof(pkt.hdr);
-	pkt.hdr.wLen = SDL_SwapLE16(static_cast<uint16_t>(len));
+	pkt.hdr.wLen = Swap16LE(static_cast<uint16_t>(len));
 	memcpy(pkt.body, data, size);
 	uint8_t playerID = 0;
 	for (uint32_t v = 1; playerID < Players.size(); playerID++, v <<= 1) {
@@ -583,7 +646,7 @@ void multi_msg_countdown()
 	}
 }
 
-void multi_player_left(uint8_t pnum, int reason)
+void multi_player_left(uint8_t pnum, leaveinfo_t reason)
 {
 	sgbPlayerLeftGameTbl[pnum] = true;
 	sgdwPlayerLeftReasonTbl[pnum] = reason;
@@ -637,7 +700,7 @@ bool multi_handle_delta()
 	return true;
 }
 
-void multi_process_network_packets()
+void ProcessGameMessagePackets()
 {
 	ClearPlayerLeftState();
 	ProcessTmsgs();
@@ -654,26 +717,26 @@ void multi_process_network_packets()
 			continue;
 		if (pkt->wCheck != HeaderCheckVal)
 			continue;
-		if (SDL_SwapLE16(pkt->wLen) != dwMsgSize)
+		if (Swap16LE(pkt->wLen) != dwMsgSize)
 			continue;
 		Player &player = Players[playerId];
 		if (!IsNetPlayerValid(player)) {
-			_cmd_id cmd = *(const _cmd_id *)(pkt + 1);
+			const _cmd_id cmd = *(const _cmd_id *)(pkt + 1);
 			if (gbBufferMsgs == 0 && IsNoneOf(cmd, CMD_SEND_PLRINFO, CMD_ACK_PLRINFO)) {
 				// Distrust all messages until
 				// player info is received
 				continue;
 			}
 		}
-		Point syncPosition = { pkt->px, pkt->py };
+		const Point syncPosition = { pkt->px, pkt->py };
 		player.position.last = syncPosition;
 		if (&player != MyPlayer) {
 			assert(gbBufferMsgs != 2);
-			player._pHitPoints = SDL_SwapLE32(pkt->php);
-			player._pMaxHP = SDL_SwapLE32(pkt->pmhp);
-			player._pMana = SDL_SwapLE32(pkt->mana);
-			player._pMaxMana = SDL_SwapLE32(pkt->maxmana);
-			bool cond = gbBufferMsgs == 1;
+			player._pHitPoints = Swap32LE(pkt->php);
+			player._pMaxHP = Swap32LE(pkt->pmhp);
+			player._pMana = Swap32LE(pkt->mana);
+			player._pMaxMana = Swap32LE(pkt->maxmana);
+			const bool cond = gbBufferMsgs == 1;
 			player._pBaseStr = pkt->bstr;
 			player._pBaseMag = pkt->bmag;
 			player._pBaseDex = pkt->bdex;
@@ -696,7 +759,7 @@ void multi_process_network_packets()
 					if (player.position.future.WalkingDistance(player.position.tile) > 1) {
 						player.position.future = player.position.tile;
 					}
-					Point target = { pkt->targx, pkt->targy };
+					const Point target = { pkt->targx, pkt->targy };
 					if (target != Point {}) // does the client send a desired (future) position of remote player?
 						MakePlrPath(player, target, true);
 				} else {
@@ -723,18 +786,18 @@ void multi_send_zero_packet(uint8_t pnum, _cmd_id bCmd, const std::byte *data, s
 		auto &message = *reinterpret_cast<TCmdPlrInfoHdr *>(pkt.body);
 		message.bCmd = bCmd;
 		assert(offset <= 0x0ffff);
-		message.wOffset = SDL_SwapLE16(static_cast<uint16_t>(offset));
+		message.wOffset = Swap16LE(static_cast<uint16_t>(offset));
 
 		size_t dwBody = gdwLargestMsgSize - sizeof(pkt.hdr) - sizeof(message);
 		dwBody = std::min(dwBody, size - offset);
 		assert(dwBody <= 0x0ffff);
-		message.wBytes = SDL_SwapLE16(static_cast<uint16_t>(dwBody));
+		message.wBytes = Swap16LE(static_cast<uint16_t>(dwBody));
 
 		memcpy(&pkt.body[sizeof(message)], &data[offset], dwBody);
 
 		const size_t dwMsg = sizeof(pkt.hdr) + sizeof(message) + dwBody;
 		assert(dwMsg <= 0x0ffff);
-		pkt.hdr.wLen = SDL_SwapLE16(static_cast<uint16_t>(dwMsg));
+		pkt.hdr.wLen = Swap16LE(static_cast<uint16_t>(dwMsg));
 
 		if (!SNetSendMessage(pnum, &pkt, dwMsg)) {
 			nthread_terminate_game("SNetSendMessage2");
@@ -755,7 +818,7 @@ void NetClose()
 	nthread_cleanup();
 	tmsg_cleanup();
 	UnregisterNetEventHandlers();
-	SNetLeaveGame(3);
+	SNetLeaveGame(leaveinfo_t::LEAVE_EXIT);
 	if (gbIsMultiplayer)
 		SDL_Delay(2000);
 	if (!demo::IsRunning()) {
@@ -829,6 +892,16 @@ bool NetInit(bool bSinglePlayer)
 	AddMessageToChatLog(_("New Game"), nullptr, UiFlags::ColorRed);
 	AddMessageToChatLog(fmt::format(fmt::runtime(_("Player '{:s}' (level {:d}) just joined the game")), myPlayer._pName, myPlayer.getCharacterLevel()));
 
+	// Log join message with seed for joining players (creator already logged it in SNetCreateGame)
+	if (gbIsMultiplayer && !IsLoopback && MyPlayerId != 0) {
+		std::string upperGameName = GameName;
+		std::transform(upperGameName.begin(), upperGameName.end(), upperGameName.begin(), ::toupper);
+		const char *privacy = PublicGame ? "public" : "private";
+		LogInfo("Joined {} {} multiplayer game '{}' (player id: {}, seed: {})",
+		    privacy, ConnectionNames[provider], upperGameName, MyPlayerId,
+		    FormatGameSeed(sgGameInitInfo.gameSeed));
+	}
+
 	return true;
 }
 
@@ -839,10 +912,10 @@ void recv_plrinfo(Player &player, const TCmdPlrInfoHdr &header, bool recv)
 	if (&player == MyPlayer) {
 		return;
 	}
-	uint8_t pnum = player.getId();
+	const uint8_t pnum = player.getId();
 	auto &packedPlayer = PackedPlayerBuffer[pnum];
 
-	if (sgwPackPlrOffsetTbl[pnum] != SDL_SwapLE16(header.wOffset)) {
+	if (sgwPackPlrOffsetTbl[pnum] != Swap16LE(header.wOffset)) {
 		sgwPackPlrOffsetTbl[pnum] = 0;
 		if (header.wOffset != 0) {
 			return;
@@ -852,9 +925,9 @@ void recv_plrinfo(Player &player, const TCmdPlrInfoHdr &header, bool recv)
 		SendPlayerInfo(pnum, CMD_ACK_PLRINFO);
 	}
 
-	memcpy(reinterpret_cast<uint8_t *>(&packedPlayer) + SDL_SwapLE16(header.wOffset), reinterpret_cast<const uint8_t *>(&header) + sizeof(header), SDL_SwapLE16(header.wBytes));
+	memcpy(reinterpret_cast<uint8_t *>(&packedPlayer) + Swap16LE(header.wOffset), reinterpret_cast<const uint8_t *>(&header) + sizeof(header), Swap16LE(header.wBytes));
 
-	sgwPackPlrOffsetTbl[pnum] += SDL_SwapLE16(header.wBytes);
+	sgwPackPlrOffsetTbl[pnum] += Swap16LE(header.wBytes);
 	if (sgwPackPlrOffsetTbl[pnum] != sizeof(packedPlayer)) {
 		return;
 	}
@@ -863,7 +936,7 @@ void recv_plrinfo(Player &player, const TCmdPlrInfoHdr &header, bool recv)
 	PlayerLeftMsg(player, false);
 	if (!UnPackNetPlayer(packedPlayer, player)) {
 		player = {};
-		SNetDropPlayer(pnum, LEAVE_DROP);
+		SNetDropPlayer(pnum, leaveinfo_t::LEAVE_DROP);
 		return;
 	}
 
@@ -878,6 +951,8 @@ void recv_plrinfo(Player &player, const TCmdPlrInfoHdr &header, bool recv)
 	std::string_view szEvent;
 	if (sgbPlayerTurnBitTbl[pnum]) {
 		szEvent = _("Player '{:s}' (level {:d}) just joined the game");
+		if (!IsLoopback)
+			LogInfo("Player '{}' joined the {} game (level {}, {}/{} players)", player._pName, ConnectionNames[provider], player.getCharacterLevel(), gbActivePlayers, MAX_PLRS);
 	} else {
 		szEvent = _("Player '{:s}' (level {:d}) is already in the game");
 	}

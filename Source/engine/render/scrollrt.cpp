@@ -9,6 +9,14 @@
 #include <cstddef>
 #include <cstdint>
 
+#ifdef USE_SDL3
+#include <SDL3/SDL_keyboard.h>
+#include <SDL3/SDL_rect.h>
+#include <SDL3/SDL_timer.h>
+#else
+#include <SDL.h>
+#endif
+
 #include <ankerl/unordered_dense.h>
 
 #include "DiabloUI/ui_flags.hpp"
@@ -29,23 +37,25 @@
 #include "engine/render/text_render.hpp"
 #include "engine/trn.hpp"
 #include "engine/world_tile.hpp"
+#include "game_mode.hpp"
 #include "gmenu.h"
 #include "headless_mode.hpp"
 #include "help.h"
 #include "hwcursor.hpp"
-#include "init.h"
+#include "init.hpp"
 #include "inv.h"
 #include "levels/dun_tile.hpp"
 #include "levels/gendung.h"
 #include "levels/tile_properties.hpp"
 #include "lighting.h"
-#include "lua/lua.hpp"
+#include "lua/lua_global.hpp"
 #include "minitext.h"
 #include "missiles.h"
 #include "nthread.h"
 #include "options.h"
 #include "panels/charpanel.hpp"
 #include "panels/console.hpp"
+#include "panels/partypanel.hpp"
 #include "panels/spell_list.hpp"
 #include "plrmsg.h"
 #include "qol/chatlog.h"
@@ -60,9 +70,11 @@
 #include "utils/display.h"
 #include "utils/is_of.hpp"
 #include "utils/log.hpp"
+#include "utils/sdl_compat.h"
 #include "utils/str_cat.hpp"
 
 #ifndef USE_SDL1
+#include "controls/local_coop.hpp"
 #include "controls/touch/renderers.h"
 #endif
 
@@ -124,8 +136,8 @@ void UpdateMissilePositionForRendering(Missile &m, int progress)
 	DisplacementOf<int64_t> velocity = m.position.velocity;
 	velocity *= progress;
 	velocity /= AnimationInfo::baseValueFraction;
-	Displacement pixelsTravelled = (m.position.traveled + Displacement { static_cast<int>(velocity.deltaX), static_cast<int>(velocity.deltaY) }) >> 16;
-	Displacement tileOffset = pixelsTravelled.screenToMissile();
+	const Displacement pixelsTravelled = (m.position.traveled + Displacement { static_cast<int>(velocity.deltaX), static_cast<int>(velocity.deltaY) }) >> 16;
+	const Displacement tileOffset = pixelsTravelled.screenToMissile();
 
 	// calculate the future missile position
 	m.position.tileForRendering = m.position.start + tileOffset;
@@ -220,6 +232,36 @@ bool ShouldShowCursor()
 }
 
 /**
+ * @brief Blit CL2 sprite, and apply lighting, to the given buffer at the given coordinates
+ * @param out Output buffer
+ * @param position Target buffer coordinate
+ * @param clx CLX frame
+ */
+inline void ClxDrawLight(const Surface &out, Point position, ClxSprite clx, int lightTableIndex)
+{
+	if (lightTableIndex != 0) {
+		ClxDrawTRN(out, position, clx, LightTables[lightTableIndex].data());
+	} else {
+		ClxDraw(out, position, clx);
+	}
+}
+
+/**
+ * @brief Blit CL2 sprite, and apply lighting and transparency blending, to the given buffer at the given coordinates
+ * @param out Output buffer
+ * @param position Target buffer coordinate
+ * @param clx CLX frame
+ */
+inline void ClxDrawLightBlended(const Surface &out, Point position, ClxSprite clx, int lightTableIndex)
+{
+	if (lightTableIndex != 0) {
+		ClxDrawBlendedTRN(out, position, clx, LightTables[lightTableIndex].data());
+	} else {
+		ClxDrawBlended(out, position, clx);
+	}
+}
+
+/**
  * @brief Save the content behind the cursor to a temporary buffer, then draw the cursor.
  */
 void DrawCursor(const Surface &out)
@@ -236,7 +278,7 @@ void DrawCursor(const Surface &out)
 		return;
 	}
 
-	Size cursSize = GetInvItemSize(pcurs);
+	const Size cursSize = GetInvItemSize(pcurs);
 	if (cursSize.width == 0 || cursSize.height == 0) {
 		cursor.rect.size = { 0, 0 };
 		return;
@@ -256,8 +298,8 @@ void DrawCursor(const Surface &out)
 
 	// Copy the buffer before the item cursor and its 1px outline are drawn to a temporary buffer.
 	const int outlineWidth = !MyPlayer->HoldItem.isEmpty() ? 1 : 0;
-	Displacement offset = !MyPlayer->HoldItem.isEmpty() ? Displacement { cursSize / 2 } : Displacement { 0 };
-	Point cursPosition = MousePosition - offset;
+	const Displacement offset = !MyPlayer->HoldItem.isEmpty() ? Displacement { cursSize / 2 } : Displacement { 0 };
+	const Point cursPosition = MousePosition - offset;
 
 	Rectangle &rect = cursor.rect;
 	rect.position.x = cursPosition.x - outlineWidth;
@@ -352,7 +394,8 @@ void DrawMonster(const Surface &out, Point tilePosition, Point targetBufferPosit
  */
 void DrawPlayerIconHelper(const Surface &out, MissileGraphicID missileGraphicId, Point position, const Player &player, bool infraVision, int lightTableIndex)
 {
-	const bool lighting = &player != MyPlayer;
+	// Local players (MyPlayer and local coop players) don't have lighting applied to their icons
+	const bool lighting = !IsLocalPlayer(player);
 
 	if (player.isWalking())
 		position += GetOffsetForWalking(player.AnimInfo, player._pdir);
@@ -398,17 +441,26 @@ void DrawPlayerIcons(const Surface &out, const Player &player, Point position, b
  */
 void DrawPlayer(const Surface &out, const Player &player, Point tilePosition, Point targetBufferPosition, int lightTableIndex)
 {
-	if (!IsTileLit(tilePosition) && !MyPlayer->_pInfraFlag && !MyPlayer->isOnArenaLevel() && leveltype != DTYPE_TOWN) {
+	// For local coop players, always render them (they have their own light source)
+	// This prevents them from disappearing when walking away from Player 1's lit area
+#ifndef USE_SDL1
+	const bool isLocalCoop = IsLocalCoopEnabled() && IsLocalCoopPlayer(player);
+#else
+	const bool isLocalCoop = false;
+#endif
+
+	if (!isLocalCoop && !IsTileLit(tilePosition) && !MyPlayer->_pInfraFlag && !MyPlayer->isOnArenaLevel() && leveltype != DTYPE_TOWN) {
 		return;
 	}
 
 	const ClxSprite sprite = player.currentSprite();
-	Point spriteBufferPosition = targetBufferPosition + player.getRenderingOffset(sprite);
+	const Point spriteBufferPosition = targetBufferPosition + player.getRenderingOffset(sprite);
 
 	if (&player == PlayerUnderCursor)
 		ClxDrawOutlineSkipColorZero(out, 165, spriteBufferPosition, sprite);
 
-	if (&player == MyPlayer && IsNoneOf(leveltype, DTYPE_NEST, DTYPE_CRYPT)) {
+	// Local players (MyPlayer and local coop players) are drawn without lighting in non-dungeon areas
+	if (IsLocalPlayer(player) && IsNoneOf(leveltype, DTYPE_NEST, DTYPE_CRYPT)) {
 		ClxDraw(out, spriteBufferPosition, sprite);
 		DrawPlayerIcons(out, player, targetBufferPosition, /*infraVision=*/false, lightTableIndex);
 		return;
@@ -435,7 +487,7 @@ void DrawDeadPlayer(const Surface &out, Point tilePosition, Point targetBufferPo
 {
 	dFlags[tilePosition.x][tilePosition.y] &= ~DungeonFlag::DeadPlayer;
 
-	for (Player &player : Players) {
+	for (const Player &player : Players) {
 		if (player.plractive && player._pHitPoints == 0 && player.isOnActiveLevel() && player.position.tile == tilePosition) {
 			dFlags[tilePosition.x][tilePosition.y] |= DungeonFlag::DeadPlayer;
 			const Point playerRenderPosition { targetBufferPosition };
@@ -458,7 +510,10 @@ void DrawObject(const Surface &out, const Object &objectToDraw, Point tilePositi
 
 	const Point screenPosition = targetBufferPosition + objectToDraw.getRenderingOffset(sprite, tilePosition);
 
-	if (&objectToDraw == ObjectUnderCursor) {
+	// Check if this object is under any player's cursor (Player 1 or local coop players)
+	const bool isHighlighted = (&objectToDraw == ObjectUnderCursor) || IsLocalCoopTargetObject(&objectToDraw);
+
+	if (isHighlighted) {
 		ClxDrawOutlineSkipColorZero(out, 194, screenPosition, sprite);
 	}
 	if (objectToDraw.applyLighting) {
@@ -498,8 +553,9 @@ void DrawCell(const Surface &out, const Lightmap lightmap, Point tilePosition, P
 
 	bool transparency = TileHasAny(tilePosition, TileProperties::Transparent) && TransList[dTransVal[tilePosition.x][tilePosition.y]];
 #ifdef _DEBUG
-	if ((SDL_GetModState() & KMOD_ALT) != 0)
+	if ((SDL_GetModState() & SDL_KMOD_ALT) != 0) {
 		transparency = false;
+	}
 #endif
 
 	const auto getFirstTileMaskLeft = [=](TileType tile) -> MaskType {
@@ -538,7 +594,7 @@ void DrawCell(const Surface &out, const Lightmap lightmap, Point tilePosition, P
 
 	// Create a special lightmap buffer to bleed light up walls
 	uint8_t lightmapBuffer[TILE_WIDTH * TILE_HEIGHT];
-	Lightmap bleedLightmap = Lightmap::bleedUp(lightmap, targetBufferPosition, lightmapBuffer);
+	const Lightmap bleedLightmap = Lightmap::bleedUp(*GetOptions().Graphics.perPixelLighting, lightmap, targetBufferPosition, lightmapBuffer);
 
 	// If the first micro tile is a floor tile, it may be followed
 	// by foliage which should be rendered now.
@@ -547,9 +603,11 @@ void DrawCell(const Surface &out, const Lightmap lightmap, Point tilePosition, P
 		const TileType tileType = levelCelBlock.type();
 		if (!isFloor || tileType == TileType::TransparentSquare) {
 			if (isFloor && tileType == TileType::TransparentSquare) {
-				RenderTileFoliage(out, bleedLightmap, targetBufferPosition, levelCelBlock, foliageTbl);
+				RenderTileFoliage(out, bleedLightmap, targetBufferPosition,
+				    pDungeonCels.get(), levelCelBlock, foliageTbl);
 			} else {
-				RenderTile(out, bleedLightmap, targetBufferPosition, levelCelBlock, getFirstTileMaskLeft(tileType), tbl);
+				RenderTile(out, bleedLightmap, targetBufferPosition,
+				    pDungeonCels.get(), levelCelBlock, getFirstTileMaskLeft(tileType), tbl);
 			}
 		}
 	}
@@ -557,10 +615,11 @@ void DrawCell(const Surface &out, const Lightmap lightmap, Point tilePosition, P
 		const TileType tileType = levelCelBlock.type();
 		if (!isFloor || tileType == TileType::TransparentSquare) {
 			if (isFloor && tileType == TileType::TransparentSquare) {
-				RenderTileFoliage(out, bleedLightmap, targetBufferPosition + RightFrameDisplacement, levelCelBlock, foliageTbl);
+				RenderTileFoliage(out, bleedLightmap, targetBufferPosition + RightFrameDisplacement,
+				    pDungeonCels.get(), levelCelBlock, foliageTbl);
 			} else {
 				RenderTile(out, bleedLightmap, targetBufferPosition + RightFrameDisplacement,
-				    levelCelBlock, getFirstTileMaskRight(tileType), tbl);
+				    pDungeonCels.get(), levelCelBlock, getFirstTileMaskRight(tileType), tbl);
 			}
 		}
 	}
@@ -571,7 +630,7 @@ void DrawCell(const Surface &out, const Lightmap lightmap, Point tilePosition, P
 			const LevelCelBlock levelCelBlock { pMap->mt[i] };
 			if (levelCelBlock.hasValue()) {
 				RenderTile(out, bleedLightmap, targetBufferPosition,
-				    levelCelBlock,
+				    pDungeonCels.get(), levelCelBlock,
 				    transparency ? MaskType::Transparent : MaskType::Solid, foliageTbl);
 			}
 		}
@@ -579,7 +638,7 @@ void DrawCell(const Surface &out, const Lightmap lightmap, Point tilePosition, P
 			const LevelCelBlock levelCelBlock { pMap->mt[i + 1] };
 			if (levelCelBlock.hasValue()) {
 				RenderTile(out, bleedLightmap, targetBufferPosition + RightFrameDisplacement,
-				    levelCelBlock,
+				    pDungeonCels.get(), levelCelBlock,
 				    transparency ? MaskType::Transparent : MaskType::Solid, foliageTbl);
 			}
 		}
@@ -619,14 +678,14 @@ void DrawFloorTile(const Surface &out, const Lightmap &lightmap, Point tilePosit
 		const LevelCelBlock levelCelBlock { DPieceMicros[levelPieceId].mt[0] };
 		if (levelCelBlock.hasValue()) {
 			RenderTileFrame(out, lightmap, targetBufferPosition, TileType::LeftTriangle,
-			    GetDunFrame(levelCelBlock.frame()), DunFrameTriangleHeight, MaskType::Solid, tbl);
+			    GetDunFrame(pDungeonCels.get(), levelCelBlock.frame()), DunFrameTriangleHeight, MaskType::Solid, tbl);
 		}
 	}
 	{
 		const LevelCelBlock levelCelBlock { DPieceMicros[levelPieceId].mt[1] };
 		if (levelCelBlock.hasValue()) {
 			RenderTileFrame(out, lightmap, targetBufferPosition + RightFrameDisplacement, TileType::RightTriangle,
-			    GetDunFrame(levelCelBlock.frame()), DunFrameTriangleHeight, MaskType::Solid, tbl);
+			    GetDunFrame(pDungeonCels.get(), levelCelBlock.frame()), DunFrameTriangleHeight, MaskType::Solid, tbl);
 		}
 	}
 }
@@ -667,7 +726,8 @@ void DrawMonsterHelper(const Surface &out, Point tilePosition, Point targetBuffe
 		auto &towner = Towners[mi];
 		const Point position = targetBufferPosition + towner.getRenderingOffset();
 		const ClxSprite sprite = towner.currentSprite();
-		if (mi == pcursmonst) {
+		// Highlight if player 1 or any local coop player is targeting this towner
+		if (mi == pcursmonst || IsLocalCoopTargetMonster(mi)) {
 			ClxDrawOutlineSkipColorZero(out, 166, position, sprite);
 		}
 		ClxDraw(out, position, sprite);
@@ -689,10 +749,11 @@ void DrawMonsterHelper(const Surface &out, Point tilePosition, Point targetBuffe
 	}
 
 	const ClxSprite sprite = monster.animInfo.currentSprite();
-	Displacement offset = monster.getRenderingOffset(sprite);
+	const Displacement offset = monster.getRenderingOffset(sprite);
 
 	const Point monsterRenderPosition = targetBufferPosition + offset;
-	if (mi == pcursmonst) {
+	// Highlight if player 1 or any local coop player is targeting this monster
+	if (mi == pcursmonst || IsLocalCoopTargetMonster(mi)) {
 		ClxDrawOutlineSkipColorZero(out, 233, monsterRenderPosition, sprite);
 	}
 	DrawMonster(out, tilePosition, monsterRenderPosition, monster, lightTableIndex);
@@ -753,7 +814,7 @@ void DrawDungeon(const Surface &out, const Lightmap &lightmap, Point tilePositio
 	}
 	Player *player = PlayerAtPosition(tilePosition);
 	if (player != nullptr) {
-		uint8_t pid = player->getId();
+		const uint8_t pid = player->getId();
 		assert(pid < MAX_PLRS);
 		int playerId = static_cast<int>(pid) + 1;
 		// If sprite is moving southwards or east, we want to draw it offset from the tile it's moving to, so we need negative ID
@@ -835,18 +896,18 @@ void DrawDungeon(const Surface &out, const Lightmap &lightmap, Point tilePositio
 	}
 
 	if (leveltype != DTYPE_TOWN) {
-		bool perPixelLighting = *GetOptions().Graphics.perPixelLighting;
-		int8_t bArch = dSpecial[tilePosition.x][tilePosition.y] - 1;
+		const bool perPixelLighting = *GetOptions().Graphics.perPixelLighting;
+		const int8_t bArch = dSpecial[tilePosition.x][tilePosition.y] - 1;
 		if (bArch >= 0) {
 			bool transparency = TransList[bMap];
 #ifdef _DEBUG
 			// Turn transparency off here for debugging
-			transparency = transparency && (SDL_GetModState() & KMOD_ALT) == 0;
+			transparency = transparency && (SDL_GetModState() & SDL_KMOD_ALT) == 0;
 #endif
 			if (perPixelLighting) {
 				// Create a special lightmap buffer to bleed light up walls
 				uint8_t lightmapBuffer[TILE_WIDTH * TILE_HEIGHT];
-				Lightmap bleedLightmap = Lightmap::bleedUp(lightmap, targetBufferPosition, lightmapBuffer);
+				const Lightmap bleedLightmap = Lightmap::bleedUp(*GetOptions().Graphics.perPixelLighting, lightmap, targetBufferPosition, lightmapBuffer);
 
 				if (transparency)
 					ClxDrawBlendedWithLightmap(out, targetBufferPosition, (*pSpecialCels)[bArch], bleedLightmap);
@@ -863,7 +924,7 @@ void DrawDungeon(const Surface &out, const Lightmap &lightmap, Point tilePositio
 		// So delay the rendering until after the next row is being drawn.
 		// This could probably have been better solved by sprites in screen space.
 		if (tilePosition.x > 0 && tilePosition.y > 0 && targetBufferPosition.y > TILE_HEIGHT) {
-			int8_t bArch = dSpecial[tilePosition.x - 1][tilePosition.y - 1] - 1;
+			const int8_t bArch = dSpecial[tilePosition.x - 1][tilePosition.y - 1] - 1;
 			if (bArch >= 0)
 				ClxDraw(out, targetBufferPosition + Displacement { 0, -TILE_HEIGHT }, (*pSpecialCels)[bArch]);
 		}
@@ -1036,16 +1097,25 @@ int tileRows;
 void CalcFirstTilePosition(Point &position, Displacement &offset)
 {
 	// Adjust by player offset and tile grid alignment
-	Player &myPlayer = *MyPlayer;
+	const Player &myPlayer = *MyPlayer;
 	offset = tileOffset;
-	if (myPlayer.isWalking())
+
+#ifndef USE_SDL1
+	// In local co-op mode, use the average walking offset of all players for smooth camera
+	Displacement localCoopOffset = GetLocalCoopCameraOffset();
+	if (localCoopOffset.deltaX != 0 || localCoopOffset.deltaY != 0) {
+		offset += localCoopOffset;
+	} else
+#endif
+	    if (myPlayer.isWalking()) {
 		offset += GetOffsetForWalking(myPlayer.AnimInfo, myPlayer._pdir, true);
+	}
 
 	position += tileShift;
 
 	// Skip rendering parts covered by the panels
 	if (CanPanelsCoverView() && (IsLeftPanelOpen() || IsRightPanelOpen())) {
-		int multiplier = (*GetOptions().Graphics.zoom) ? 1 : 2;
+		const int multiplier = (*GetOptions().Graphics.zoom) ? 1 : 2;
 		position += Displacement(Direction::East) * multiplier;
 		offset.deltaX += -TILE_WIDTH * multiplier / 2 / 2;
 
@@ -1056,8 +1126,43 @@ void CalcFirstTilePosition(Point &position, Displacement &offset)
 	}
 
 	// Draw areas moving in and out of the screen
+	// In local co-op, we need to expand the render area if any player is walking
+	// or if the camera has any offset (to ensure smooth scrolling doesn't leave gaps)
+#ifndef USE_SDL1
+	bool anyPlayerWalking = false;
+	Direction walkDir = Direction::South;
+	bool hasLocalCoopCameraOffset = false;
+	if (IsAnyLocalCoopPlayerInitialized()) {
+		// Check if camera has any offset (indicating it's interpolating)
+		if (localCoopOffset.deltaX != 0 || localCoopOffset.deltaY != 0) {
+			hasLocalCoopCameraOffset = true;
+		}
+		for (size_t i = 0; i < Players.size(); ++i) {
+			const Player &player = Players[i];
+			if (player.plractive && player._pHitPoints > 0 && player.isWalking()) {
+				anyPlayerWalking = true;
+				walkDir = player._pdir;
+				break;
+			}
+		}
+	} else {
+		anyPlayerWalking = myPlayer.isWalking();
+		walkDir = myPlayer._pdir;
+	}
+
+	// In local co-op with camera offset, expand rendering in all directions
+	// This ensures no gaps appear when the camera is smoothly following players
+	if (hasLocalCoopCameraOffset) {
+		// Expand rendering area in all directions by one tile
+		offset.deltaX -= TILE_WIDTH / 2;
+		offset.deltaY -= TILE_HEIGHT / 2;
+		position += Direction::NorthWest;
+	} else if (anyPlayerWalking) {
+#else
 	if (myPlayer.isWalking()) {
-		switch (myPlayer._pdir) {
+		Direction walkDir = myPlayer._pdir;
+#endif
+		switch (walkDir) {
 		case Direction::North:
 		case Direction::NorthEast:
 			offset.deltaY -= TILE_HEIGHT;
@@ -1075,7 +1180,9 @@ void CalcFirstTilePosition(Point &position, Displacement &offset)
 		default:
 			break;
 		}
+#ifndef USE_SDL1
 	}
+#endif
 }
 
 /**
@@ -1101,9 +1208,28 @@ void DrawGame(const Surface &fullOut, Point position, Displacement offset)
 
 	UpdateMissilesRendererData();
 
+#ifndef USE_SDL1
+	// In local co-op mode with sub-tile camera offset, we need extra tiles to cover edges
+	Displacement localCoopOffset = GetLocalCoopCameraOffset();
+	if (localCoopOffset.deltaX != 0 || localCoopOffset.deltaY != 0) {
+		// Add extra tiles in all directions to ensure full coverage
+		// The offset can shift the view in any direction, so we add padding
+		columns += 2;
+		rows += 2;
+	}
+#endif
+
 	// Draw areas moving in and out of the screen
-	if (MyPlayer->isWalking()) {
-		switch (MyPlayer->_pdir) {
+	// In local co-op, check if any player is walking and expand render area accordingly
+#ifndef USE_SDL1
+	Direction expandDir = Direction::South;
+	const bool shouldExpandForWalk = IsAnyLocalPlayerWalking(expandDir);
+	if (shouldExpandForWalk) {
+		switch (expandDir) {
+#else
+		if (MyPlayer->isWalking()) {
+			switch (MyPlayer->_pdir) {
+#endif
 		case Direction::NoDirection:
 			break;
 		case Direction::North:
@@ -1131,9 +1257,10 @@ void DrawGame(const Surface &fullOut, Point position, Displacement offset)
 	DunRenderStats.clear();
 #endif
 
-	Lightmap lightmap = Lightmap::build(position, Point {} + offset,
+	Lightmap lightmap = Lightmap::build(*GetOptions().Graphics.perPixelLighting, position, Point {} + offset,
 	    gnScreenWidth, gnViewportHeight, rows, columns,
-	    out.at(0, 0), out.pitch(), LightTables[0].data(), LightTables[0].size());
+	    out.at(0, 0), out.pitch(), LightTables, FullyLitLightTable, FullyDarkLightTable,
+	    dLight, MicroTileLen);
 
 	DrawFloor(out, lightmap, position, Point {} + offset, rows, columns);
 	DrawTileContent(out, lightmap, position, Point {} + offset, rows, columns);
@@ -1302,8 +1429,16 @@ void DrawView(const Surface &out, Point startPosition)
 	doom_draw(out);
 	DrawInfoBox(out);
 	UpdateLifeManaPercent(); // Update life/mana totals before rendering any portion of the flask.
-	DrawLifeFlaskUpper(out);
-	DrawManaFlaskUpper(out);
+#ifndef USE_SDL1
+	// Hide flask tops only when local co-op has at least one other player initialized
+	// When only player 1, show the original UI with flask tops
+	if (!IsAnyLocalCoopPlayerInitialized()) {
+#endif
+		DrawLifeFlaskUpper(out);
+		DrawManaFlaskUpper(out);
+#ifndef USE_SDL1
+	}
+#endif
 }
 
 /**
@@ -1319,8 +1454,8 @@ void DrawFPS(const Surface &out)
 	}
 
 	framesSinceLastUpdate++;
-	uint32_t runtimeInMs = SDL_GetTicks();
-	uint32_t msSinceLastUpdate = runtimeInMs - lastFpsUpdateInMs;
+	const uint32_t runtimeInMs = SDL_GetTicks();
+	const uint32_t msSinceLastUpdate = runtimeInMs - lastFpsUpdateInMs;
 	if (msSinceLastUpdate >= 1000) {
 		lastFpsUpdateInMs = runtimeInMs;
 		constexpr int FpsPow10 = 10;
@@ -1333,7 +1468,7 @@ void DrawFPS(const Surface &out)
 		    : BufCopy(buf, fps / FpsPow10, ".", fps % FpsPow10, " FPS");
 		formatted = { buf, static_cast<std::string_view::size_type>(end - buf) };
 	};
-	DrawString(out, formatted, Point { 8, 68 }, { .flags = UiFlags::ColorRed });
+	DrawString(out, formatted, Point { 8, 8 }, { .flags = UiFlags::ColorRed });
 }
 
 /**
@@ -1406,7 +1541,7 @@ void DrawMain(int dwHgt, bool drawDesc, bool drawHp, bool drawMana, bool drawSba
 		if (PrevCursorRect.size.width != 0 && PrevCursorRect.size.height != 0) {
 			DoBlitScreen(PrevCursorRect);
 		}
-		Rectangle &cursorRect = GetDrawnCursor().rect;
+		const Rectangle &cursorRect = GetDrawnCursor().rect;
 		if (cursorRect.size.width != 0 && cursorRect.size.height != 0) {
 			DoBlitScreen(cursorRect);
 		}
@@ -1431,7 +1566,7 @@ Displacement GetOffsetForWalking(const AnimationInfo &animationInfo, const Direc
 	constexpr Displacement MovingOffset[8]   = { {   0,  32 }, { -32,  16 }, { -64,   0 }, { -32, -16 }, {   0, -32 }, {  32, -16 },  {  64,   0 }, {  32,  16 } };
 	// clang-format on
 
-	uint8_t animationProgress = animationInfo.getAnimationProgress();
+	const uint8_t animationProgress = animationInfo.getAnimationProgress();
 	Displacement offset = MovingOffset[static_cast<size_t>(dir)];
 	offset *= animationProgress;
 	offset /= AnimationInfo::baseValueFraction;
@@ -1456,7 +1591,7 @@ void ShiftGrid(Point *offset, int horizontal, int vertical)
 
 int RowsCoveredByPanel()
 {
-	auto &mainPanelSize = GetMainPanel().size;
+	const auto &mainPanelSize = GetMainPanel().size;
 	if (GetScreenWidth() <= mainPanelSize.width) {
 		return 0;
 	}
@@ -1471,8 +1606,8 @@ int RowsCoveredByPanel()
 
 void CalcTileOffset(int *offsetX, int *offsetY)
 {
-	uint16_t screenWidth = GetScreenWidth();
-	uint16_t viewportHeight = GetViewportHeight();
+	const uint16_t screenWidth = GetScreenWidth();
+	const uint16_t viewportHeight = GetViewportHeight();
 
 	int x;
 	int y;
@@ -1496,8 +1631,8 @@ void CalcTileOffset(int *offsetX, int *offsetY)
 
 void TilesInView(int *rcolumns, int *rrows)
 {
-	uint16_t screenWidth = GetScreenWidth();
-	uint16_t viewportHeight = GetViewportHeight();
+	const uint16_t screenWidth = GetScreenWidth();
+	const uint16_t viewportHeight = GetViewportHeight();
 
 	int columns = screenWidth / TILE_WIDTH;
 	if ((screenWidth % TILE_WIDTH) != 0) {
@@ -1577,7 +1712,7 @@ Point GetScreenPosition(Point tile)
 	Displacement offset = {};
 	CalcFirstTilePosition(firstTile, offset);
 
-	Displacement delta = firstTile - tile;
+	const Displacement delta = firstTile - tile;
 
 	Point position {};
 	position += delta.worldToScreen();
@@ -1593,7 +1728,7 @@ void ClearScreenBuffer()
 		return;
 
 	assert(PalSurface != nullptr);
-	SDL_FillRect(PalSurface, nullptr, 0);
+	SDL_FillSurfaceRect(PalSurface, nullptr, 0);
 }
 
 #ifdef _DEBUG
@@ -1694,13 +1829,13 @@ void DrawAndBlit()
 	bool drawMana = IsRedrawComponent(PanelDrawComponent::Mana);
 	bool drawControlButtons = IsRedrawComponent(PanelDrawComponent::ControlButtons);
 	bool drawBelt = IsRedrawComponent(PanelDrawComponent::Belt);
-	bool drawChatInput = ChatFlag;
+	const bool drawChatInput = ChatFlag;
 	bool drawInfoBox = false;
 	bool drawCtrlPan = false;
 
 	const Rectangle &mainPanel = GetMainPanel();
 
-	if (gnScreenWidth > mainPanel.size.width || IsRedrawEverything()) {
+	if (gnScreenWidth > mainPanel.size.width || IsRedrawEverything() || *GetOptions().Gameplay.enableFloatingNumbers != FloatingNumbers::Off) {
 		drawHealth = true;
 		drawMana = true;
 		drawControlButtons = true;
@@ -1720,33 +1855,62 @@ void DrawAndBlit()
 	nthread_UpdateProgressToNextGameTick();
 
 	DrawView(out, ViewPosition);
-	if (drawCtrlPan) {
-		DrawMainPanel(out);
-	}
-	if (drawHealth) {
-		DrawLifeFlaskLower(out);
-	}
-	if (drawMana) {
-		DrawManaFlaskLower(out);
 
-		DrawSpell(out);
+#ifndef USE_SDL1
+	// When local co-op is enabled AND at least one other player has spawned,
+	// hide the main panel UI and use corner HUDs instead.
+	// Player 1's corner HUD will show when local coop is enabled.
+	// But keep the main panel visible until other players have actually joined the game.
+	const bool hideMainPanelForLocalCoop = IsAnyLocalCoopPlayerInitialized();
+#else
+	const bool hideMainPanelForLocalCoop = false;
+#endif
+
+	if (!hideMainPanelForLocalCoop) {
+		if (drawCtrlPan) {
+			DrawMainPanel(out);
+		}
+		if (drawHealth) {
+			DrawLifeFlaskLower(out, !drawCtrlPan);
+		}
+		if (drawMana) {
+			DrawManaFlaskLower(out, !drawCtrlPan);
+			DrawSpell(out);
+		}
+		if (drawControlButtons) {
+			DrawMainPanelButtons(out);
+		}
+		if (drawBelt) {
+			DrawInvBelt(out);
+#ifndef USE_SDL1
+			DrawPlayer1SkillSlots(out);
+#endif
+		}
+		if (drawChatInput) {
+			DrawChatBox(out);
+		}
+		DrawXPBar(out);
+		if (*GetOptions().Gameplay.showHealthValues)
+			DrawFlaskValues(out, { mainPanel.position.x + 134, mainPanel.position.y + 28 }, MyPlayer->_pHitPoints >> 6, MyPlayer->_pMaxHP >> 6);
+		if (*GetOptions().Gameplay.showManaValues)
+			DrawFlaskValues(out, { mainPanel.position.x + mainPanel.size.width - 138, mainPanel.position.y + 28 },
+			    (HasAnyOf(InspectPlayer->_pIFlags, ItemSpecialEffect::NoMana) || (MyPlayer->_pMana >> 6) <= 0) ? 0 : MyPlayer->_pMana >> 6,
+			    HasAnyOf(InspectPlayer->_pIFlags, ItemSpecialEffect::NoMana) ? 0 : MyPlayer->_pMaxMana >> 6);
 	}
-	if (drawControlButtons) {
-		DrawMainPanelButtons(out);
-	}
-	if (drawBelt) {
-		DrawInvBelt(out);
-	}
-	if (drawChatInput) {
-		DrawChatBox(out);
-	}
-	DrawXPBar(out);
-	if (*GetOptions().Gameplay.showHealthValues)
-		DrawFlaskValues(out, { mainPanel.position.x + 134, mainPanel.position.y + 28 }, MyPlayer->_pHitPoints >> 6, MyPlayer->_pMaxHP >> 6);
-	if (*GetOptions().Gameplay.showManaValues)
-		DrawFlaskValues(out, { mainPanel.position.x + mainPanel.size.width - 138, mainPanel.position.y + 28 },
-		    (HasAnyOf(InspectPlayer->_pIFlags, ItemSpecialEffect::NoMana) || (MyPlayer->_pMana >> 6) <= 0) ? 0 : MyPlayer->_pMana >> 6,
-		    HasAnyOf(InspectPlayer->_pIFlags, ItemSpecialEffect::NoMana) ? 0 : MyPlayer->_pMaxMana >> 6);
+
+	// Draw floating info box (always draw when local co-op is active, otherwise check option)
+	if (hideMainPanelForLocalCoop || *GetOptions().Gameplay.floatingInfoBox)
+		DrawFloatingInfoBox(out);
+
+	if (*GetOptions().Gameplay.showMultiplayerPartyInfo && PartySidePanelOpen)
+		DrawPartyMemberInfoPanel(out);
+
+#ifndef USE_SDL1
+	// Draw local co-op character selection UI
+	DrawLocalCoopCharacterSelect(out);
+	// Draw local co-op player HUD (text-only stats in corners)
+	DrawLocalCoopPlayerHUD(out);
+#endif
 
 	DrawCursor(out);
 
@@ -1761,7 +1925,7 @@ void DrawAndBlit()
 #endif
 
 	RedrawComplete();
-	for (PanelDrawComponent component : enum_values<PanelDrawComponent>()) {
+	for (const PanelDrawComponent component : enum_values<PanelDrawComponent>()) {
 		if (IsRedrawComponent(component)) {
 			RedrawComponentComplete(component);
 		}

@@ -4,7 +4,11 @@
 #include <cstddef>
 #include <cstdint>
 
+#ifdef USE_SDL3
+#include <SDL3/SDL_events.h>
+#else
 #include <SDL.h>
+#endif
 
 #include "controls/controller.h"
 #include "controls/game_controls.h"
@@ -59,6 +63,11 @@ void InvalidateInventorySlot();
 void FocusOnInventory();
 void PerformSpellAction();
 void QuickCast(size_t slot);
+void HotSpellMove(AxisDirection dir);
+
+// Process D-pad/stick navigation for game panels (inventory, character, quest log, etc.)
+// Used by local coop players to navigate panels with their own D-pad input
+void ProcessGamePanelNavigation(AxisDirection dir);
 
 extern int speedspellcount;
 

@@ -43,7 +43,7 @@ enum item_quality : uint8_t {
 	ITEM_QUALITY_UNIQUE,
 };
 
-enum _unique_items : int8_t {
+enum _unique_items : int32_t {
 	UITEM_CLEAVER,
 	UITEM_SKCROWN,
 	UITEM_INFRARING,
@@ -492,16 +492,15 @@ extern bool ShowUniqueItemInfoBox;
 extern CornerStoneStruct CornerStone;
 extern DVL_API_FOR_TEST bool UniqueItemFlags[128];
 
-uint8_t GetOutlineColor(const Item &item, bool checkReq);
+uint8_t GetOutlineColor(const Item &item, bool checkReq, const Player *player = nullptr);
 bool IsItemAvailable(int i);
-bool IsUniqueAvailable(int i);
 void ClearUniqueItemFlags();
 void InitItemGFX();
 void InitItems();
 void CalcPlrItemVals(Player &player, bool Loadgfx);
 void CalcPlrInv(Player &player, bool Loadgfx);
 void InitializeItem(Item &item, _item_indexes itemData);
-void GenerateNewSeed(Item &h);
+void GenerateNewSeed(Item &item);
 int GetGoldCursor(int value);
 
 /**
@@ -558,6 +557,7 @@ void UseItem(Player &player, item_misc_id Mid, SpellID spellID, int spellFrom);
 bool UseItemOpensHive(const Item &item, Point position);
 bool UseItemOpensGrave(const Item &item, Point position);
 void SpawnSmith(int lvl);
+void ReplacePremium(const Player &player, int idx);
 void SpawnPremium(const Player &player);
 void SpawnWitch(int lvl);
 void SpawnBoy(int lvl);
