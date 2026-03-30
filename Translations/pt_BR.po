@@ -790,7 +790,7 @@ msgstr "Entrar em Hellfire"
 
 #: Source/DiabloUI/selstart.cpp:50
 msgid "Switch to Diablo"
-msgstr "Mudar para Diablo"
+msgstr "Ir para Diablo"
 
 #: Source/DiabloUI/selyesno.cpp:72 Source/stores.cpp:972
 msgid "Yes"
