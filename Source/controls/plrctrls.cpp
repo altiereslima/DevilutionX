@@ -1496,7 +1496,7 @@ void WalkInDir(Player &player, AxisDirection dir)
 	const bool useDirectControl = IsAnyOf(ControlMode, ControlTypes::Gamepad, ControlTypes::VirtualGamepad);
 
 	if (dir.x == AxisDirectionX_NONE && dir.y == AxisDirectionY_NONE) {
-		if (useDirectControl && player.walkpath[0] != WALK_NONE && player.destAction == ACTION_NONE)
+		if (useDirectControl && (player.walkpath[0] != WALK_NONE || player.isWalking()))
 			NetSendCmdLoc(player.getId(), true, CMD_WALKXY, player.position.future); // Stop walking
 		return;
 	}
@@ -1514,6 +1514,10 @@ void WalkInDir(Player &player, AxisDirection dir)
 
 	Direction walkDirection = pdir;
 	if (useDirectControl) {
+		if (player.isWalking()) {
+			return;
+		}
+
 		walkDirection = GetWalkDirectionWithWallSliding(player, dir);
 		if (walkDirection == Direction::NoDirection) {
 			if (player._pmode == PM_STAND)
