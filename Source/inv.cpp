@@ -20,7 +20,6 @@
 
 #include "DiabloUI/ui_flags.hpp"
 #include "controls/control_mode.hpp"
-#include "controls/local_coop.hpp"
 #include "controls/plrctrls.h"
 #include "cursor.h"
 #include "engine/backbuffer_state.hpp"
@@ -638,20 +637,13 @@ std::optional<inv_xy_slot> FindSlotUnderCursor(Point cursorPosition)
 		}
 	}
 
-#ifndef USE_SDL1
-	// Skip belt mouse events when local co-op is actually enabled (2+ controllers)
-	if (!IsLocalCoopEnabled()) {
-#endif
-		testPosition = static_cast<Point>(cursorPosition - GetMainPanel().position);
-		for (std::underlying_type_t<inv_xy_slot> r = SLOTXY_BELT_FIRST; r != NUM_XY_SLOTS; r++) {
-			// check which belt rectangle the mouse is in, if any
-			if (InvRect[r].contains(testPosition)) {
-				return static_cast<inv_xy_slot>(r);
-			}
+	testPosition = static_cast<Point>(cursorPosition - GetMainPanel().position);
+	for (std::underlying_type_t<inv_xy_slot> r = SLOTXY_BELT_FIRST; r != NUM_XY_SLOTS; r++) {
+		// check which belt rectangle the mouse is in, if any
+		if (InvRect[r].contains(testPosition)) {
+			return static_cast<inv_xy_slot>(r);
 		}
-#ifndef USE_SDL1
 	}
-#endif
 
 	return {};
 }
@@ -1230,7 +1222,7 @@ void DrawInv(const Surface &out)
 			const Point position = GetPanelPosition(UiPanels::Inventory, { screenX, screenY });
 
 			if (pcursinvitem == slot) {
-				ClxDrawOutline(out, GetOutlineColor(myPlayer.InvBody[slot], true, &myPlayer), position, sprite);
+				ClxDrawOutline(out, GetOutlineColor(myPlayer.InvBody[slot], true), position, sprite);
 			}
 
 			DrawItem(myPlayer.InvBody[slot], out, position, sprite);
@@ -1264,7 +1256,7 @@ void DrawInv(const Surface &out)
 			const ClxSprite sprite = GetInvItemSprite(cursId);
 			const Point position = GetPanelPosition(UiPanels::Inventory, InvRect[j + SLOTXY_INV_FIRST].position) + Displacement { 0, InventorySlotSizeInPixels.height };
 			if (pcursinvitem == ii + INVITEM_INV_FIRST) {
-				ClxDrawOutline(out, GetOutlineColor(myPlayer.InvList[ii], true, &myPlayer), position, sprite);
+				ClxDrawOutline(out, GetOutlineColor(myPlayer.InvList[ii], true), position, sprite);
 			}
 
 			DrawItem(myPlayer.InvList[ii], out, position, sprite);
@@ -1297,32 +1289,13 @@ void DrawInvBelt(const Surface &out)
 
 		if (pcursinvitem == i + INVITEM_BELT_FIRST) {
 			if (ControlMode == ControlTypes::KeyboardAndMouse || invflag) {
-				ClxDrawOutline(out, GetOutlineColor(myPlayer.SpdList[i], true, &myPlayer), position, sprite);
+				ClxDrawOutline(out, GetOutlineColor(myPlayer.SpdList[i], true), position, sprite);
 			}
 		}
 
 		DrawItem(myPlayer.SpdList[i], out, position, sprite);
 
-		// Draw button labels if shoulder buttons are held (local coop mode)
-		bool showShoulderLabel = false;
-		const char *shoulderLabel = nullptr;
-		if (IsLocalCoopEnabled() && &myPlayer == &Players[0]) {
-			// Button labels for belt slots: A, B, X, Y
-			static constexpr std::string_view ButtonLabels[] = { "A", "B", "X", "Y" };
-			if (IsPlayerShoulderHeld(0, true) && i < 4) {
-				shoulderLabel = ButtonLabels[i].data();
-				showShoulderLabel = true;
-			} else if (IsPlayerShoulderHeld(0, false) && i >= 4 && i < 8) {
-				shoulderLabel = ButtonLabels[i - 4].data();
-				showShoulderLabel = true;
-			}
-		}
-
-		if (showShoulderLabel && shoulderLabel != nullptr) {
-			// Draw shoulder button label (overrides normal key label)
-			DrawString(out, shoulderLabel, { position - Displacement { 0, 12 }, InventorySlotSizeInPixels },
-			    { .flags = UiFlags::ColorWhite | UiFlags::Outlined | UiFlags::AlignRight | UiFlags::FontSize12, .spacing = 0 });
-		} else if (myPlayer.SpdList[i].isUsable()
+		if (myPlayer.SpdList[i].isUsable()
 		    && myPlayer.SpdList[i]._itype != ItemType::Gold) {
 			auto beltKey = StrCat("BeltItem", i + 1);
 			std::string_view keyName = ControlMode == ControlTypes::Gamepad
@@ -1670,17 +1643,12 @@ void CheckInvItem(bool isShiftHeld, bool isCtrlHeld)
 {
 	if (IsInspectingPlayer())
 		return;
-
-	// In local co-op, inventory interactions affect the panel owner player
-	Player *panelOwner = GetLocalCoopPanelOwnerPlayer();
-	Player &player = panelOwner != nullptr ? *panelOwner : *MyPlayer;
-
-	if (!player.HoldItem.isEmpty()) {
-		CheckInvPaste(player, MousePosition);
+	if (!MyPlayer->HoldItem.isEmpty()) {
+		CheckInvPaste(*MyPlayer, MousePosition);
 	} else if (IsStashOpen && isCtrlHeld) {
-		TransferItemToStash(player, pcursinvitem);
+		TransferItemToStash(*MyPlayer, pcursinvitem);
 	} else {
-		CheckInvCut(player, MousePosition, isShiftHeld, isCtrlHeld);
+		CheckInvCut(*MyPlayer, MousePosition, isShiftHeld, isCtrlHeld);
 	}
 }
 
@@ -1946,19 +1914,8 @@ int SyncDropEar(Point position, uint16_t icreateinfo, uint32_t iseed, uint8_t cu
 
 int8_t CheckInvHLight()
 {
-#ifndef USE_SDL1
-	// Skip belt mouse events when local co-op is actually enabled (2+ controllers)
-	const bool skipBeltForLocalCoop = IsLocalCoopEnabled();
-#else
-	const bool skipBeltForLocalCoop = false;
-#endif
-
 	int8_t r = 0;
 	for (; r < NUM_XY_SLOTS; r++) {
-		// Skip belt slots when local co-op is enabled
-		if (skipBeltForLocalCoop && r >= SLOTXY_BELT_FIRST)
-			continue;
-
 		int xo = GetRightPanel().position.x;
 		int yo = GetRightPanel().position.y;
 		if (r >= SLOTXY_BELT_FIRST) {
@@ -2117,12 +2074,9 @@ bool UseInvItem(int cii)
 	if (IsInspectingPlayer())
 		return false;
 
-	if (MyPlayer == nullptr)
-		return false;
-
 	Player &player = *MyPlayer;
 
-	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer)
+	if (player._pInvincible && player.hasNoLife() && &player == MyPlayer)
 		return true;
 	if (pcurs != CURSOR_HAND)
 		return true;

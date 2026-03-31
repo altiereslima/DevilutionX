@@ -19,6 +19,7 @@
 #include "engine/sound_defs.hpp"
 #include "engine/sound_position.hpp"
 #include "game_mode.hpp"
+#include "options.h"
 #include "player.h"
 #include "utils/is_of.hpp"
 
@@ -92,8 +93,13 @@ void PlaySfxPriv(TSFX *pSFX, bool loc, Point position)
 	if (pSFX->pSnd == nullptr)
 		pSFX->pSnd = sound_file_load(pSFX->pszName.c_str());
 
-	if (pSFX->pSnd != nullptr && pSFX->pSnd->DSB.IsLoaded())
-		snd_play_snd(pSFX->pSnd.get(), lVolume, lPan);
+	if (pSFX->pSnd == nullptr || !pSFX->pSnd->DSB.IsLoaded())
+		return;
+
+	const auto id = static_cast<SfxID>(pSFX - sgSFX.data());
+	const bool useCuesVolume = (id >= SfxID::AccessibilityWeapon && id <= SfxID::AccessibilityInteract);
+	const int userVolume = useCuesVolume ? *GetOptions().Audio.audioCuesVolume : *GetOptions().Audio.soundVolume;
+	snd_play_snd(pSFX->pSnd.get(), lVolume, lPan, userVolume);
 }
 
 SfxID RndSFX(SfxID psfx)
@@ -246,9 +252,14 @@ void sound_update()
 	StreamUpdate();
 }
 
-void effects_cleanup_sfx()
+void effects_cleanup_sfx(bool fullUnload)
 {
 	sound_stop();
+
+	if (fullUnload) {
+		sgSFX.clear();
+		return;
+	}
 
 	for (auto &sfx : sgSFX)
 		sfx.pSnd = nullptr;
@@ -305,7 +316,7 @@ void effects_play_sound(SfxID id)
 
 	TSFX &sfx = sgSFX[static_cast<int16_t>(id)];
 	if (sfx.pSnd != nullptr && !sfx.pSnd->isPlaying()) {
-		snd_play_snd(sfx.pSnd.get(), 0, 0);
+		snd_play_snd(sfx.pSnd.get(), 0, 0, *GetOptions().Audio.soundVolume);
 	}
 }
 

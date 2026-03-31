@@ -28,10 +28,9 @@
 #include <fmt/core.h>
 
 #include "DiabloUI/ui_flags.hpp"
-#include "control.h"
+#include "control/control.hpp"
 #include "controls/control_mode.hpp"
 #include "controls/controller_buttons.h"
-#include "controls/local_coop.hpp"
 #include "cursor.h"
 #include "diablo.h"
 #include "doom.h"
@@ -53,7 +52,6 @@
 #include "headless_mode.hpp"
 #include "inv.h"
 #include "inv_iterators.hpp"
-#include "itemdat.h"
 #include "items/validation.h"
 #include "levels/gendung.h"
 #include "levels/gendung_defs.hpp"
@@ -61,25 +59,26 @@
 #include "levels/town.h"
 #include "lighting.h"
 #include "minitext.h"
-#include "monstdat.h"
 #include "monster.h"
 #include "msg.h"
 #include "multi.h"
-#include "objdat.h"
 #include "objects.h"
 #include "options.h"
 #include "pack.h"
 #include "panels/info_box.hpp"
 #include "panels/ui_panels.hpp"
 #include "player.h"
-#include "playerdat.hpp"
 #include "qol/stash.h"
 #include "quests.h"
 #include "sound_effect_enums.h"
-#include "spelldat.h"
 #include "spells.h"
 #include "stores.h"
-#include "textdat.h"
+#include "tables/itemdat.h"
+#include "tables/monstdat.h"
+#include "tables/objdat.h"
+#include "tables/playerdat.hpp"
+#include "tables/spelldat.h"
+#include "tables/textdat.h"
 #include "utils/enum_traits.h"
 #include "utils/format_int.hpp"
 #include "utils/is_of.hpp"
@@ -2403,15 +2402,10 @@ bool IsItemAvailable(int i)
 	        *GetOptions().Gameplay.testBard && IsAnyOf(i, IDI_BARDSWORD, IDI_BARDDAGGER));
 }
 
-uint8_t GetOutlineColor(const Item &item, bool checkReq, const Player *player)
+uint8_t GetOutlineColor(const Item &item, bool checkReq)
 {
-	if (checkReq) {
-		// If a player is specified, check if that player can use the item.
-		// Otherwise, use the pre-computed _iStatFlag.
-		bool canUse = player != nullptr ? player->CanUseItem(item) : item._iStatFlag;
-		if (!canUse)
-			return ICOL_RED;
-	}
+	if (checkReq && !item._iStatFlag)
+		return ICOL_RED;
 	if (item._itype == ItemType::Gold)
 		return ICOL_YELLOW;
 	if (item._iMagical == ITEM_QUALITY_MAGIC)
@@ -2542,13 +2536,14 @@ void CalcPlrPrimaryStats(Player &player, int strength, int &magic, int dexterity
 }
 
 void CalcPlrLightRadius(Player &player, int lrad)
-
 {
 	lrad = std::clamp(lrad, 2, 15);
 
 	if (player._pLightRad != lrad) {
-		ChangeLightRadius(player.lightId, lrad);
-		ChangeVisionRadius(player.getId(), lrad);
+		if (player.isOnActiveLevel()) {
+			ChangeLightRadius(player.lightId, lrad);
+			ChangeVisionRadius(player.getId(), lrad);
+		}
 		player._pLightRad = lrad;
 	}
 }
@@ -2651,7 +2646,7 @@ void CalcPlrLifeMana(Player &player, int vitality, int magic, int life, int mana
 	player._pMaxHP = std::clamp(life + player._pMaxHPBase, 1 << 6, 2000 << 6);
 	player._pHitPoints = std::min(life + player._pHPBase, player._pMaxHP);
 
-	if (&player == MyPlayer && (player._pHitPoints >> 6) <= 0) {
+	if (&player == MyPlayer && player.hasNoLife()) {
 		SetPlayerHitPoints(player, 0);
 	}
 
@@ -2899,26 +2894,24 @@ void CalcPlrInv(Player &player, bool loadgfx)
 	CalcSelfItems(player);
 
 	// Determine the current item bonuses gained from usable equipped items
-	// For local players, we always want to load graphics
-	// For network multiplayer players not on our level, skip graphics loading
-	if (!IsLocalPlayer(player) && !player.isOnActiveLevel()) {
-		// Ensure we don't load graphics for remote network players that aren't on our level
+	if (&player != MyPlayer && !player.isOnActiveLevel()) {
+		// Ensure we don't load graphics for players that aren't on our level
 		loadgfx = false;
 	}
 	CalcPlrItemVals(player, loadgfx);
 
-	// For local players, update item stat flags for inventory/belt items
-	// This determines whether items show as usable (normal color) or unusable (red tint)
-	if (IsLocalPlayer(player)) {
+	if (&player == MyPlayer) {
 		// Now that stat gains from equipped items have been calculated, mark unusable scrolls etc
 		for (Item &item : InventoryAndBeltPlayerItemsRange { player }) {
 			item.updateRequiredStatsCacheForPlayer(player);
 		}
 		player.CalcScrolls();
-		if (&player == MyPlayer && IsStashOpen) {
+		if (IsStashOpen) {
 			// If stash is open, ensure the items are displayed correctly
 			Stash.RefreshItemStatFlags();
 		}
+		if (!player.HoldItem.isEmpty())
+			player.HoldItem.updateRequiredStatsCacheForPlayer(player);
 	}
 }
 

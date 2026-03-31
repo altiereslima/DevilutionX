@@ -19,9 +19,8 @@
 #include <utility>
 
 #include "appfat.h"
-#include "control.h"
+#include "control/control.hpp"
 #include "controls/control_mode.hpp"
-#include "controls/local_coop.hpp"
 #include "controls/plrctrls.h"
 #include "crawl.hpp"
 #include "cursor.h"
@@ -38,19 +37,19 @@
 #include "engine/world_tile.hpp"
 #include "function_ref.hpp"
 #include "interfac.h"
-#include "itemdat.h"
 #include "items.h"
 #include "levels/gendung.h"
 #include "levels/gendung_defs.hpp"
-#include "misdat.h"
-#include "monstdat.h"
 #include "msg.h"
 #include "multi.h"
 #include "objects.h"
 #include "player.h"
-#include "playerdat.hpp"
 #include "sound_effect_enums.h"
-#include "spelldat.h"
+#include "tables/itemdat.h"
+#include "tables/misdat.h"
+#include "tables/monstdat.h"
+#include "tables/playerdat.hpp"
+#include "tables/spelldat.h"
 #include "utils/enum_traits.h"
 #ifdef _DEBUG
 #include "debug.h"
@@ -328,11 +327,10 @@ bool MonsterMHit(const Player &player, Monster &monster, int mindam, int maxdam,
 	if (resist)
 		dam >>= 2;
 
-	// Local players (MyPlayer and local coop players) apply damage locally
-	if (IsLocalPlayer(player))
+	if (&player == MyPlayer)
 		ApplyMonsterDamage(damageType, monster, dam);
 
-	if (monster.hitPoints >> 6 <= 0) {
+	if (monster.hasNoLife()) {
 		M_StartKill(monster, player);
 	} else if (resist) {
 		monster.tag(player);
@@ -436,7 +434,7 @@ bool Plr2PlrMHit(const Player &player, Player &target, int mindam, int maxdam, i
 		dam /= 2;
 	if (resper > 0) {
 		dam -= (dam * resper) / 100;
-		if (IsLocalPlayer(player))
+		if (&player == MyPlayer)
 			NetSendCmdDamage(true, target, dam, damageType);
 		target.Say(HeroSpeech::ArghClang);
 		return true;
@@ -446,7 +444,7 @@ bool Plr2PlrMHit(const Player &player, Player &target, int mindam, int maxdam, i
 		StartPlrBlock(target, GetDirection(target.position.tile, player.position.tile));
 		*blocked = true;
 	} else {
-		if (IsLocalPlayer(player))
+		if (&player == MyPlayer)
 			NetSendCmdDamage(true, target, dam, damageType);
 		StartPlrHit(target, dam, false);
 	}
@@ -717,7 +715,7 @@ bool GuardianTryFireAt(Missile &missile, Point target)
 {
 	const Point position = missile.position.tile;
 
-	if (!LineClearMissile(position, target))
+	if (!LineClearMovingMissile(position, target))
 		return false;
 	const int mid = dMonster[target.x][target.y] - 1;
 	if (mid < 0)
@@ -725,7 +723,7 @@ bool GuardianTryFireAt(Missile &missile, Point target)
 	const Monster &monster = Monsters[mid];
 	if (monster.isPlayerMinion())
 		return false;
-	if (monster.hitPoints >> 6 <= 0)
+	if (monster.hasNoLife())
 		return false;
 
 	const Player &player = Players[missile._misource];
@@ -1055,7 +1053,7 @@ bool MonsterTrapHit(Monster &monster, int mindam, int maxdam, int dist, MissileI
 	if (DebugGodMode)
 		monster.hitPoints = 0;
 #endif
-	if (monster.hitPoints >> 6 <= 0) {
+	if (monster.hasNoLife()) {
 		MonsterDeath(monster, monster.direction, true);
 	} else if (resist) {
 		PlayEffect(monster, MonsterSound::Hit);
@@ -1069,7 +1067,7 @@ bool PlayerMHit(Player &player, Monster *monster, int dist, int mind, int maxd, 
 {
 	*blocked = false;
 
-	if (player._pHitPoints >> 6 <= 0) {
+	if (player.hasNoLife()) {
 		return false;
 	}
 
@@ -1180,25 +1178,27 @@ bool PlayerMHit(Player &player, Monster *monster, int dist, int mind, int maxd, 
 		return true;
 	}
 
+	if (monster != nullptr) {
+		MonsterReducePlayerAttribute(*monster, player);
+	}
+
 	if (resper > 0) {
 		dam -= dam * resper / 100;
-		// Local players (MyPlayer and local coop players) apply damage locally
-		if (IsLocalPlayer(player)) {
+		if (&player == MyPlayer) {
 			ApplyPlrDamage(damageType, player, 0, 0, dam, deathReason);
 		}
 
-		if (player._pHitPoints >> 6 > 0) {
+		if (!player.hasNoLife()) {
 			player.Say(HeroSpeech::ArghClang);
 		}
 		return true;
 	}
 
-	// Local players (MyPlayer and local coop players) apply damage locally
-	if (IsLocalPlayer(player)) {
+	if (&player == MyPlayer) {
 		ApplyPlrDamage(damageType, player, 0, 0, dam, deathReason);
 	}
 
-	if (player._pHitPoints >> 6 > 0) {
+	if (!player.hasNoLife()) {
 		StartPlrHit(player, dam, false);
 	}
 
@@ -1292,7 +1292,7 @@ void AddReflect(Missile &missile, AddMissileParameter & /*parameter*/)
 	if (player.wReflections + add >= std::numeric_limits<uint16_t>::max())
 		add = 0;
 	player.wReflections += add;
-	if (IsLocalPlayer(player))
+	if (&player == MyPlayer)
 		NetSendCmdParam1(true, CMD_SETREFLECT, player.wReflections);
 }
 
@@ -1700,7 +1700,7 @@ void AddSearch(Missile &missile, AddMissileParameter & /*parameter*/)
 {
 	Player &player = Players[missile._misource];
 
-	if (IsLocalPlayer(player))
+	if (&player == MyPlayer)
 		AutoMapShowItems = true;
 	int lvl = 2;
 	if (missile._misource >= 0)
@@ -2163,7 +2163,7 @@ void AddManaShield(Missile &missile, AddMissileParameter &parameter)
 	}
 
 	player.pManaShield = true;
-	if (IsLocalPlayer(player))
+	if (&player == MyPlayer)
 		NetSendCmd(true, CMD_SETSHIELD);
 }
 
@@ -2479,7 +2479,7 @@ void AddHealOther(Missile &missile, AddMissileParameter & /*parameter*/)
 	Player &player = Players[missile._misource];
 
 	missile._miDelFlag = true;
-	if (IsLocalPlayer(player)) {
+	if (&player == MyPlayer) {
 		NewCursor(CURSOR_HEALOTHER);
 		if (ControlMode != ControlTypes::KeyboardAndMouse)
 			TryIconCurs();
@@ -2513,7 +2513,7 @@ void AddIdentify(Missile &missile, AddMissileParameter & /*parameter*/)
 	Player &player = Players[missile._misource];
 
 	missile._miDelFlag = true;
-	if (IsLocalPlayer(player)) {
+	if (&player == MyPlayer) {
 		if (SpellbookFlag)
 			SpellbookFlag = false;
 		if (!invflag) {
@@ -2602,7 +2602,7 @@ void AddItemRepair(Missile &missile, AddMissileParameter & /*parameter*/)
 	Player &player = Players[missile._misource];
 
 	missile._miDelFlag = true;
-	if (IsLocalPlayer(player)) {
+	if (&player == MyPlayer) {
 		if (SpellbookFlag)
 			SpellbookFlag = false;
 		if (!invflag) {
@@ -2619,7 +2619,7 @@ void AddStaffRecharge(Missile &missile, AddMissileParameter & /*parameter*/)
 	Player &player = Players[missile._misource];
 
 	missile._miDelFlag = true;
-	if (IsLocalPlayer(player)) {
+	if (&player == MyPlayer) {
 		if (SpellbookFlag)
 			SpellbookFlag = false;
 		if (!invflag) {
@@ -2636,7 +2636,7 @@ void AddTrapDisarm(Missile &missile, AddMissileParameter & /*parameter*/)
 	Player &player = Players[missile._misource];
 
 	missile._miDelFlag = true;
-	if (IsLocalPlayer(player)) {
+	if (&player == MyPlayer) {
 		NewCursor(CURSOR_DISARM);
 		if (ControlMode != ControlTypes::KeyboardAndMouse) {
 			if (ObjectUnderCursor != nullptr)
@@ -2736,7 +2736,7 @@ void AddResurrect(Missile &missile, AddMissileParameter & /*parameter*/)
 {
 	Player &player = Players[missile._misource];
 
-	if (IsLocalPlayer(player)) {
+	if (&player == MyPlayer) {
 		NewCursor(CURSOR_RESURRECT);
 		if (ControlMode != ControlTypes::KeyboardAndMouse)
 			TryIconCurs();
@@ -2756,7 +2756,7 @@ void AddTelekinesis(Missile &missile, AddMissileParameter & /*parameter*/)
 	Player &player = Players[missile._misource];
 
 	missile._miDelFlag = true;
-	if (IsLocalPlayer(player))
+	if (&player == MyPlayer)
 		NewCursor(CURSOR_TELEKINESIS);
 }
 
@@ -3271,7 +3271,7 @@ void ProcessSearch(Missile &missile)
 
 	missile._miDelFlag = true;
 	PlaySfxLoc(SfxID::SpellEnd, player.position.tile);
-	if (IsLocalPlayer(player))
+	if (&player == MyPlayer)
 		AutoMapShowItems = false;
 }
 
@@ -3401,7 +3401,7 @@ void ProcessTownPortal(Missile &missile)
 	for (Player &player : Players) {
 		if (player.plractive && player.isOnActiveLevel() && !player._pLvlChanging && player._pmode == PM_STAND && player.position.tile == missile.position.tile) {
 			ClrPlrPath(player);
-			if (IsLocalPlayer(player)) {
+			if (&player == MyPlayer) {
 				NetSendCmdParam1(true, CMD_WARP, missile._misource);
 				player._pmode = PM_NEWLVL;
 			}
@@ -3699,12 +3699,8 @@ void ProcessTeleport(Missile &missile)
 		ChangeLightXY(player.lightId, player.position.tile);
 		ChangeVisionXY(player.getId(), player.position.tile);
 	}
-	if (IsLocalPlayer(player)) {
-		// In local co-op mode with spawned players, let UpdateLocalCoopCamera handle the ViewPosition
-		// to keep the camera centered between all players
-		if (!IsAnyLocalCoopPlayerInitialized()) {
-			ViewPosition = player.position.tile;
-		}
+	if (&player == MyPlayer) {
+		ViewPosition = player.position.tile;
 	}
 }
 
@@ -3940,7 +3936,7 @@ void ProcessRage(Missile &missile)
 	CalcPlrItemVals(player, true);
 
 	// Prevent the player from dying as a result of recalculating their current life
-	if ((player._pHitPoints >> 6) <= 0)
+	if (player.hasNoLife())
 		SetPlayerHitPoints(player, 64);
 
 	RedrawEverything();
@@ -4215,7 +4211,7 @@ static void DeleteMissiles()
 void ProcessManaShield()
 {
 	Player &myPlayer = *MyPlayer;
-	if (myPlayer.pManaShield && myPlayer._pMana <= 0) {
+	if (myPlayer.pManaShield && myPlayer.hasNoMana()) {
 		myPlayer.pManaShield = false;
 		NetSendCmd(true, CMD_REMSHIELD);
 	}

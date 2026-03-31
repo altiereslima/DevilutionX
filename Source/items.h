@@ -13,9 +13,9 @@
 #include "engine/animationinfo.h"
 #include "engine/point.hpp"
 #include "engine/surface.hpp"
-#include "itemdat.h"
 #include "levels/dun_tile.hpp"
 #include "monster.h"
+#include "tables/itemdat.h"
 #include "utils/is_of.hpp"
 #include "utils/string_or_view.hpp"
 
@@ -492,7 +492,7 @@ extern bool ShowUniqueItemInfoBox;
 extern CornerStoneStruct CornerStone;
 extern DVL_API_FOR_TEST bool UniqueItemFlags[128];
 
-uint8_t GetOutlineColor(const Item &item, bool checkReq, const Player *player = nullptr);
+uint8_t GetOutlineColor(const Item &item, bool checkReq);
 bool IsItemAvailable(int i);
 void ClearUniqueItemFlags();
 void InitItemGFX();

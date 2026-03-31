@@ -5,12 +5,11 @@
  */
 #include "portal.h"
 
-#include "controls/local_coop.hpp"
 #include "lighting.h"
-#include "misdat.h"
 #include "missiles.h"
 #include "multi.h"
 #include "player.h"
+#include "tables/misdat.h"
 
 namespace devilution {
 
@@ -163,21 +162,16 @@ void GetPortalLevel()
 
 void GetPortalLvlPos()
 {
-	Point portalPos;
 	if (leveltype == DTYPE_TOWN) {
-		portalPos = PortalTownPosition[portalindex] + Displacement { 1, 1 };
+		ViewPosition = PortalTownPosition[portalindex] + Displacement { 1, 1 };
 	} else {
-		portalPos = Portals[portalindex].position;
+		ViewPosition = Portals[portalindex].position;
 
 		if (portalindex != MyPlayerId) {
-			portalPos.x++;
-			portalPos.y++;
+			ViewPosition.x++;
+			ViewPosition.y++;
 		}
 	}
-
-	// In local co-op mode with active players, UpdateLocalCoopCamera will handle
-	// the view position. We still set it here as a fallback for initial positioning.
-	ViewPosition = portalPos;
 }
 
 bool PosOkPortal(int lvl, Point position)

@@ -18,14 +18,13 @@
 #endif
 
 #include "automap.h"
-#include "control.h"
+#include "control/control.hpp"
 #include "controls/controller_motion.h"
 #ifndef USE_SDL1
 #include "controls/devices/game_controller.h"
 #endif
 #include "controls/control_mode.hpp"
 #include "controls/game_controls.h"
-#include "controls/local_coop.hpp"
 #include "controls/touch/gamepad.h"
 #include "cursor.h"
 #include "doom.h"
@@ -77,7 +76,7 @@ bool InGameMenu()
 	    || qtextflag
 	    || gmenu_is_active()
 	    || PauseMode == 2
-	    || (MyPlayer != nullptr && MyPlayer->_pInvincible && MyPlayer->_pHitPoints == 0);
+	    || (MyPlayer != nullptr && MyPlayer->_pInvincible && MyPlayer->hasNoLife());
 }
 
 namespace {
@@ -249,7 +248,7 @@ bool CanTargetMonster(const Monster &monster)
 		return false;
 	if (monster.isPlayerMinion())
 		return false;
-	if (monster.hitPoints >> 6 <= 0) // dead
+	if (monster.hasNoLife()) // dead
 		return false;
 
 	if (!IsTileLit(monster.position.tile)) // not visible
@@ -396,7 +395,7 @@ void CheckPlayerNearby()
 		const int my = player.position.future.y;
 		if (dPlayer[mx][my] == 0
 		    || !IsTileLit(player.position.future)
-		    || (player._pHitPoints == 0 && spl != SpellID::Resurrect))
+		    || (player.hasNoLife() && spl != SpellID::Resurrect))
 			continue;
 
 		if (myPlayer.UsesRangedWeapon() || HasRangedSpell() || spl == SpellID::HealOther) {
@@ -540,7 +539,7 @@ void Interact()
 		return;
 	}
 
-	if (leveltype != DTYPE_TOWN && PlayerUnderCursor != nullptr && !myPlayer.friendlyMode) {
+	if (leveltype != DTYPE_TOWN && PlayerUnderCursor != nullptr && !PlayerUnderCursor->hasNoLife() && !myPlayer.friendlyMode) {
 		NetSendCmdParam1(true, myPlayer.UsesRangedWeapon() ? CMD_RATTACKPID : CMD_ATTACKPID, PlayerUnderCursor->getId());
 		LastPlayerAction = PlayerActionType::AttackPlayerTarget;
 		return;
@@ -1350,6 +1349,63 @@ void StashMove(AxisDirection dir)
 	FocusOnInventory();
 }
 
+void HotSpellMove(AxisDirection dir)
+{
+	static AxisDirectionRepeater repeater;
+	dir = repeater.Get(dir);
+	if (dir.x == AxisDirectionX_NONE && dir.y == AxisDirectionY_NONE)
+		return;
+
+	auto spellListItems = GetSpellListItems();
+
+	Point position = MousePosition;
+	int shortestDistance = std::numeric_limits<int>::max();
+	for (auto &spellListItem : spellListItems) {
+		const Point center = spellListItem.location + Displacement { SPLICONLENGTH / 2, -SPLICONLENGTH / 2 };
+		const int distance = MousePosition.ManhattanDistance(center);
+		if (distance < shortestDistance) {
+			position = center;
+			shortestDistance = distance;
+		}
+	}
+
+	const auto search = [&](AxisDirection dir, bool searchForward) {
+		if (dir.x == AxisDirectionX_NONE && dir.y == AxisDirectionY_NONE)
+			return;
+
+		for (size_t i = 0; i < spellListItems.size(); i++) {
+			const size_t index = searchForward ? spellListItems.size() - i - 1 : i;
+
+			auto &spellListItem = spellListItems[index];
+			if (spellListItem.isSelected)
+				continue;
+
+			const Point center = spellListItem.location + Displacement { SPLICONLENGTH / 2, -SPLICONLENGTH / 2 };
+			if (dir.x == AxisDirectionX_LEFT && center.x >= MousePosition.x)
+				continue;
+			if (dir.x == AxisDirectionX_RIGHT && center.x <= MousePosition.x)
+				continue;
+			if (dir.x == AxisDirectionX_NONE && center.x != position.x)
+				continue;
+			if (dir.y == AxisDirectionY_UP && center.y >= MousePosition.y)
+				continue;
+			if (dir.y == AxisDirectionY_DOWN && center.y <= MousePosition.y)
+				continue;
+			if (dir.y == AxisDirectionY_NONE && center.y != position.y)
+				continue;
+
+			position = center;
+			break;
+		}
+	};
+	search({ AxisDirectionX_NONE, dir.y }, dir.y == AxisDirectionY_DOWN);
+	search({ dir.x, AxisDirectionY_NONE }, dir.x == AxisDirectionX_RIGHT);
+
+	if (position != MousePosition) {
+		SetCursorPos(position);
+	}
+}
+
 void SpellBookMove(AxisDirection dir)
 {
 	static AxisDirectionRepeater repeater;
@@ -1390,16 +1446,62 @@ bool IsPathBlocked(Point position, Direction dir)
 	return !PosOkPlayer(myPlayer, leftStep) && !PosOkPlayer(myPlayer, rightStep);
 }
 
+bool CanWalkDirectlyTo(const Player &player, Point startPosition, Direction direction)
+{
+	const Point destination = startPosition + direction;
+	if (!PosOkPlayer(player, destination))
+		return false;
+
+	if (direction == Direction::East && IsTileSolid(startPosition + Direction::SouthEast))
+		return false;
+	if (direction == Direction::West && IsTileSolid(startPosition + Direction::SouthWest))
+		return false;
+
+	return !IsPathBlocked(startPosition, direction);
+}
+
+Direction GetWalkDirectionWithWallSliding(const Player &player, AxisDirection axisDirection)
+{
+	const Direction desiredDirection = FaceDir[static_cast<std::size_t>(axisDirection.x)][static_cast<std::size_t>(axisDirection.y)];
+	const Point startPosition = player.position.future;
+	if (CanWalkDirectlyTo(player, startPosition, desiredDirection))
+		return desiredDirection;
+
+	if (axisDirection.x == AxisDirectionX_NONE || axisDirection.y == AxisDirectionY_NONE)
+		return Direction::NoDirection;
+
+	const Direction horizontalDirection = FaceDir[static_cast<std::size_t>(axisDirection.x)][static_cast<std::size_t>(AxisDirectionY_NONE)];
+	const Direction verticalDirection = FaceDir[static_cast<std::size_t>(AxisDirectionX_NONE)][static_cast<std::size_t>(axisDirection.y)];
+
+	const float absStickX = std::fabs(leftStickX);
+	const float absStickY = std::fabs(leftStickY);
+	if (absStickX >= absStickY) {
+		if (CanWalkDirectlyTo(player, startPosition, horizontalDirection))
+			return horizontalDirection;
+		if (CanWalkDirectlyTo(player, startPosition, verticalDirection))
+			return verticalDirection;
+		return Direction::NoDirection;
+	}
+
+	if (CanWalkDirectlyTo(player, startPosition, verticalDirection))
+		return verticalDirection;
+	if (CanWalkDirectlyTo(player, startPosition, horizontalDirection))
+		return horizontalDirection;
+
+	return Direction::NoDirection;
+}
+
 void WalkInDir(Player &player, AxisDirection dir)
 {
+	const bool useDirectControl = IsAnyOf(ControlMode, ControlTypes::Gamepad, ControlTypes::VirtualGamepad);
+
 	if (dir.x == AxisDirectionX_NONE && dir.y == AxisDirectionY_NONE) {
-		if (ControlMode != ControlTypes::KeyboardAndMouse && player.walkpath[0] != WALK_NONE && player.destAction == ACTION_NONE)
+		if (useDirectControl && player.walkpath[0] != WALK_NONE && player.destAction == ACTION_NONE)
 			NetSendCmdLoc(player.getId(), true, CMD_WALKXY, player.position.future); // Stop walking
 		return;
 	}
 
 	const Direction pdir = FaceDir[static_cast<std::size_t>(dir.x)][static_cast<std::size_t>(dir.y)];
-	const auto delta = player.position.future + pdir;
 
 	if (!player.isWalking() && player.CanChangeAction())
 		player._pdir = pdir;
@@ -1410,19 +1512,24 @@ void WalkInDir(Player &player, AxisDirection dir)
 		return;
 	}
 
-	// Check if target position would be off-screen in local co-op mode
-	if (!IsLocalCoopPositionOnScreen(delta)) {
-		if (player._pmode == PM_STAND)
-			StartStand(player, pdir);
-		return; // Don't allow walking off-screen in local co-op
+	Direction walkDirection = pdir;
+	if (useDirectControl) {
+		walkDirection = GetWalkDirectionWithWallSliding(player, dir);
+		if (walkDirection == Direction::NoDirection) {
+			if (player._pmode == PM_STAND)
+				StartStand(player, pdir);
+			return;
+		}
+	} else {
+		const Point directDestination = player.position.future + walkDirection;
+		if (PosOkPlayer(player, directDestination) && IsPathBlocked(player.position.future, walkDirection)) {
+			if (player._pmode == PM_STAND)
+				StartStand(player, pdir);
+			return; // Don't start backtrack around obstacles
+		}
 	}
 
-	if (PosOkPlayer(player, delta) && IsPathBlocked(player.position.future, pdir)) {
-		if (player._pmode == PM_STAND)
-			StartStand(player, pdir);
-		return; // Don't start backtrack around obstacles
-	}
-
+	const Point delta = player.position.future + walkDirection;
 	NetSendCmdLoc(player.getId(), true, CMD_WALKXY, delta);
 }
 
@@ -1545,8 +1652,11 @@ struct RightStickAccumulator {
 
 bool IsStickMovementSignificant()
 {
-	return leftStickX >= 0.5 || leftStickX <= -0.5
-	    || leftStickY >= 0.5 || leftStickY <= -0.5
+	// avoid sqrt() by comparing squared magnitudes
+	const float leftStickMagnitudeSquared = leftStickX * leftStickX + leftStickY * leftStickY;
+	const float thresholdSquared = StickDirectionThreshold * StickDirectionThreshold;
+
+	return leftStickMagnitudeSquared >= thresholdSquared
 	    || rightStickX != 0 || rightStickY != 0;
 }
 
@@ -1684,94 +1794,6 @@ void LogGamepadChange(GamepadLayout newGamepad)
 #endif
 
 } // namespace
-
-void HotSpellMove(AxisDirection dir)
-{
-	static AxisDirectionRepeater repeater;
-	dir = repeater.Get(dir);
-	if (dir.x == AxisDirectionX_NONE && dir.y == AxisDirectionY_NONE)
-		return;
-
-	auto spellListItems = GetSpellListItems();
-
-	Point position = MousePosition;
-	int shortestDistance = std::numeric_limits<int>::max();
-	for (auto &spellListItem : spellListItems) {
-		const Point center = spellListItem.location + Displacement { SPLICONLENGTH / 2, -SPLICONLENGTH / 2 };
-		const int distance = MousePosition.ManhattanDistance(center);
-		if (distance < shortestDistance) {
-			position = center;
-			shortestDistance = distance;
-		}
-	}
-
-	const auto search = [&](AxisDirection dir, bool searchForward) {
-		if (dir.x == AxisDirectionX_NONE && dir.y == AxisDirectionY_NONE)
-			return;
-
-		for (size_t i = 0; i < spellListItems.size(); i++) {
-			const size_t index = searchForward ? spellListItems.size() - i - 1 : i;
-
-			auto &spellListItem = spellListItems[index];
-			if (spellListItem.isSelected)
-				continue;
-
-			const Point center = spellListItem.location + Displacement { SPLICONLENGTH / 2, -SPLICONLENGTH / 2 };
-			if (dir.x == AxisDirectionX_LEFT && center.x >= MousePosition.x)
-				continue;
-			if (dir.x == AxisDirectionX_RIGHT && center.x <= MousePosition.x)
-				continue;
-			if (dir.x == AxisDirectionX_NONE && center.x != position.x)
-				continue;
-			if (dir.y == AxisDirectionY_UP && center.y >= MousePosition.y)
-				continue;
-			if (dir.y == AxisDirectionY_DOWN && center.y <= MousePosition.y)
-				continue;
-			if (dir.y == AxisDirectionY_NONE && center.y != position.y)
-				continue;
-
-			position = center;
-			break;
-		}
-	};
-	search({ AxisDirectionX_NONE, dir.y }, dir.y == AxisDirectionY_DOWN);
-	search({ dir.x, AxisDirectionY_NONE }, dir.x == AxisDirectionX_RIGHT);
-
-	if (position != MousePosition) {
-		SetCursorPos(position);
-	}
-}
-
-void ProcessGamePanelNavigation(AxisDirection dir)
-{
-	// Apply the direction to whichever panel navigation handler is active
-	// This is used by local coop players to navigate panels with their D-pad
-	// We need to call the same handlers used by GetLeftStickOrDPadGameUIHandler
-	if (SpellSelectFlag) {
-		HotSpellMove(dir);
-	} else if (invflag) {
-		// Call CheckInventoryMove logic directly - it adds repeat delay
-		static AxisDirectionRepeater repeater(/*min_interval_ms=*/150);
-		dir = repeater.Get(dir);
-		if (dir.x != AxisDirectionX_NONE || dir.y != AxisDirectionY_NONE)
-			InventoryMove(dir);
-	} else if (CharFlag && MyPlayer->_pStatPts > 0) {
-		static AxisDirectionRepeater repeater;
-		dir = repeater.Get(dir);
-		if (dir.x != AxisDirectionX_NONE || dir.y != AxisDirectionY_NONE)
-			AttrIncBtnSnap(dir);
-	} else if (QuestLogIsOpen) {
-		static AxisDirectionRepeater repeater;
-		dir = repeater.Get(dir);
-		if (dir.x != AxisDirectionX_NONE || dir.y != AxisDirectionY_NONE)
-			QuestLogMove(dir);
-	} else if (SpellbookFlag) {
-		static AxisDirectionRepeater repeater;
-		dir = repeater.Get(dir);
-		if (dir.x != AxisDirectionX_NONE || dir.y != AxisDirectionY_NONE)
-			SpellBookMove(dir);
-	}
-}
 
 void DetectInputMethod(const SDL_Event &event, const ControllerButtonEvent &gamepadEvent)
 {
@@ -2019,15 +2041,6 @@ void plrctrls_every_frame()
 void plrctrls_after_game_logic()
 {
 	Movement(*MyPlayer);
-
-	// Update local co-op player movement
-	UpdateLocalCoopMovement();
-
-	// Update local co-op skill button holds (for quick spell menu)
-	UpdateLocalCoopSkillButtons();
-
-	// Update camera to follow all local co-op players
-	UpdateLocalCoopCamera();
 }
 
 void UseBeltItem(BeltItemType type)

@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <queue>
 #include <string>
-#include <utility>
 
 #include "dvlnet/abstract_net.h"
 
@@ -11,10 +10,8 @@ namespace devilution::net {
 
 class loopback : public abstract_net {
 private:
-	/// Message queue storing pairs of (sender_id, message_data)
-	std::queue<std::pair<uint8_t, buffer_t>> message_queue;
+	std::queue<buffer_t> message_queue;
 	buffer_t message_last;
-	uint8_t message_last_sender = 0;
 	uint8_t plr_single = 0;
 
 public:

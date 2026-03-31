@@ -11,9 +11,9 @@
 #include "game_mode.hpp"
 #include "items/validation.h"
 #include "loadsave.h"
-#include "playerdat.hpp"
 #include "plrmsg.h"
 #include "stores.h"
+#include "tables/playerdat.hpp"
 #include "utils/endian_read.hpp"
 #include "utils/endian_swap.hpp"
 #include "utils/is_of.hpp"
@@ -221,6 +221,7 @@ void PackNetPlayer(PlayerNetPack &packed, const Player &player)
 	packed.plrlevel = player.plrlevel;
 	packed.px = player.position.tile.x;
 	packed.py = player.position.tile.y;
+	packed.pdir = static_cast<uint8_t>(player._pdir);
 	CopyUtf8(packed.pName, player._pName, sizeof(packed.pName));
 	packed.pClass = static_cast<uint8_t>(player._pClass);
 	packed.pBaseStr = player._pBaseStr;
@@ -489,9 +490,11 @@ bool UnPackNetPlayer(const PlayerNetPack &packed, Player &player)
 
 	ValidateField(packed._pNumInv, packed._pNumInv <= InventoryGridCells);
 
+	ValidateField(packed.pdir, packed.pdir <= static_cast<uint8_t>(Direction::SouthEast));
 	player.setCharacterLevel(packed.pLevel);
 	player.position.tile = position;
 	player.position.future = position;
+	player._pdir = static_cast<Direction>(packed.pdir);
 	player.plrlevel = packed.plrlevel;
 	player.plrIsOnSetLevel = packed.isOnSetLevel != 0;
 	player._pMaxHPBase = baseHpMax;

@@ -26,8 +26,8 @@
 #include "levels/dun_tile.hpp"
 #include "levels/gendung.h"
 #include "multi.h"
-#include "playerdat.hpp"
-#include "spelldat.h"
+#include "tables/playerdat.hpp"
+#include "tables/spelldat.h"
 #include "utils/attributes.h"
 #include "utils/enum_traits.h"
 #include "utils/is_of.hpp"
@@ -900,6 +900,16 @@ public:
 
 		return (type == leftHandItem._itype && leftHandItem._iStatFlag) || (type == rightHandItem._itype && rightHandItem._iStatFlag);
 	}
+
+	bool hasNoLife() const
+	{
+		return leveltype == DTYPE_TOWN ? false : _pHitPoints >> 6 <= 0;
+	}
+
+	bool hasNoMana() const
+	{
+		return _pMana >> 6 <= 0;
+	}
 };
 
 extern DVL_API_FOR_TEST uint8_t MyPlayerId;
@@ -953,7 +963,6 @@ void PlrClrTrans(Point position);
 void PlrDoTrans(Point position);
 void SetPlayerOld(Player &player);
 void FixPlayerLocation(Player &player, Direction bDir);
-void StartWalk(Player &player, Direction dir, bool pmWillBeCalled);
 void StartStand(Player &player, Direction dir);
 void StartPlrBlock(Player &player, Direction dir);
 void FixPlrWalkTags(const Player &player);
@@ -965,7 +974,6 @@ void StartPlayerKill(Player &player, DeathReason deathReason);
 void StripTopGold(Player &player);
 void SyncPlrKill(Player &player, DeathReason deathReason);
 void RemovePlrMissiles(const Player &player);
-void InitLevelChange(Player &player);
 void StartNewLvl(Player &player, interface_mode fom, int lvl);
 void RestartTownLvl(Player &player);
 void StartWarpLvl(Player &player, size_t pidx);

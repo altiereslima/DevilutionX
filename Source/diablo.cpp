@@ -27,7 +27,7 @@
 #include "appfat.h"
 #include "automap.h"
 #include "capture.h"
-#include "control.h"
+#include "control/control.hpp"
 #include "cursor.h"
 #include "dead.h"
 #ifdef _DEBUG
@@ -36,7 +36,6 @@
 #include "DiabloUI/diabloui.h"
 #include "controls/control_mode.hpp"
 #include "controls/keymapper.hpp"
-#include "controls/local_coop.hpp"
 #include "controls/plrctrls.h"
 #include "controls/remap_keyboard.h"
 #include "diablo.h"
@@ -73,11 +72,11 @@
 #include "levels/trigs.h"
 #include "lighting.h"
 #include "loadsave.h"
+#include "lua/lua_event.hpp"
 #include "lua/lua_global.hpp"
 #include "menu.h"
 #include "minitext.h"
 #include "missiles.h"
-#include "monstdat.h"
 #include "movie.h"
 #include "multi.h"
 #include "nthread.h"
@@ -89,7 +88,6 @@
 #include "panels/spell_book.hpp"
 #include "panels/spell_list.hpp"
 #include "pfile.h"
-#include "playerdat.hpp"
 #include "plrmsg.h"
 #include "qol/chatlog.h"
 #include "qol/floatingnumbers.h"
@@ -102,6 +100,8 @@
 #include "stores.h"
 #include "storm/storm_net.hpp"
 #include "storm/storm_svid.h"
+#include "tables/monstdat.h"
+#include "tables/playerdat.hpp"
 #include "towners.h"
 #include "track.h"
 #include "utils/console.h"
@@ -282,7 +282,7 @@ void LeftMouseCmd(bool bShift)
 				LastPlayerAction = PlayerActionType::AttackMonsterTarget;
 				NetSendCmdParam1(true, CMD_RATTACKID, pcursmonst);
 			}
-		} else if (PlayerUnderCursor != nullptr && !myPlayer.friendlyMode) {
+		} else if (PlayerUnderCursor != nullptr && !PlayerUnderCursor->hasNoLife() && !myPlayer.friendlyMode) {
 			LastPlayerAction = PlayerActionType::AttackPlayerTarget;
 			NetSendCmdParam1(true, CMD_RATTACKPID, PlayerUnderCursor->getId());
 		}
@@ -302,7 +302,7 @@ void LeftMouseCmd(bool bShift)
 		} else if (pcursmonst != -1) {
 			LastPlayerAction = PlayerActionType::AttackMonsterTarget;
 			NetSendCmdParam1(true, CMD_ATTACKID, pcursmonst);
-		} else if (PlayerUnderCursor != nullptr && !myPlayer.friendlyMode) {
+		} else if (PlayerUnderCursor != nullptr && !PlayerUnderCursor->hasNoLife() && !myPlayer.friendlyMode) {
 			LastPlayerAction = PlayerActionType::AttackPlayerTarget;
 			NetSendCmdParam1(true, CMD_ATTACKPID, PlayerUnderCursor->getId());
 		}
@@ -369,15 +369,7 @@ void LeftMouseDown(uint16_t modState)
 	const bool isShiftHeld = (modState & SDL_KMOD_SHIFT) != 0;
 	const bool isCtrlHeld = (modState & SDL_KMOD_CTRL) != 0;
 
-#ifndef USE_SDL1
-	// Skip main panel mouse handling only when the main panel is actually hidden for local co-op
-	// (i.e., local co-op is enabled AND at least one co-op player has spawned)
-	const bool skipMainPanelForLocalCoop = IsLocalCoopEnabled() && IsAnyLocalCoopPlayerInitialized();
-#else
-	const bool skipMainPanelForLocalCoop = false;
-#endif
-
-	if (!GetMainPanel().contains(MousePosition) || skipMainPanelForLocalCoop) {
+	if (!GetMainPanel().contains(MousePosition)) {
 		if (!gmenu_is_active() && !TryIconCurs()) {
 			if (QuestLogIsOpen && GetLeftPanel().contains(MousePosition)) {
 				QuestlogESC();
@@ -736,13 +728,6 @@ void PrepareForFadeIn()
 
 void GameEventHandler(const SDL_Event &event, uint16_t modState)
 {
-#ifndef USE_SDL1
-	// Handle local co-op player input before Player 1's input
-	if (ProcessLocalCoopInput(event)) {
-		return;
-	}
-#endif
-
 	[[maybe_unused]] const Options &options = GetOptions();
 	StaticVector<ControllerButtonEvent, 4> ctrlEvents = ToControllerButtonEvents(event);
 	for (const ControllerButtonEvent ctrlEvent : ctrlEvents) {
@@ -892,7 +877,7 @@ void RunGameLoop(interface_mode uMsg)
 	nthread_ignore_mutex(false);
 
 	discord_manager::StartGame();
-	LuaEvent("GameStart");
+	lua::GameStart();
 #ifdef GPERF_HEAP_FIRST_GAME_ITERATION
 	unsigned run_game_iteration = 0;
 #endif
@@ -1806,7 +1791,7 @@ void OptionLanguageCodeChanged()
 	UnloadFonts();
 	LanguageInitialize();
 	LoadLanguageArchive();
-	effects_cleanup_sfx();
+	effects_cleanup_sfx(false);
 	if (gbRunGame)
 		sound_init();
 	else
@@ -2252,31 +2237,31 @@ void InitPadmapActions()
 	    N_("Move up"),
 	    N_("Moves the player character up."),
 	    ControllerButton_BUTTON_DPAD_UP,
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "MoveDown",
 	    N_("Move down"),
 	    N_("Moves the player character down."),
 	    ControllerButton_BUTTON_DPAD_DOWN,
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "MoveLeft",
 	    N_("Move left"),
 	    N_("Moves the player character left."),
 	    ControllerButton_BUTTON_DPAD_LEFT,
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "MoveRight",
 	    N_("Move right"),
 	    N_("Moves the player character right."),
 	    ControllerButton_BUTTON_DPAD_RIGHT,
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "StandGround",
 	    N_("Stand ground"),
 	    N_("Hold to prevent the player from moving."),
 	    ControllerButton_NONE,
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "ToggleStandGround",
 	    N_("Toggle stand ground"),
@@ -2362,49 +2347,49 @@ void InitPadmapActions()
 	    N_("Automap Move Up"),
 	    N_("Moves the automap up when active."),
 	    ControllerButton_NONE,
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "AutomapMoveDown",
 	    N_("Automap Move Down"),
 	    N_("Moves the automap down when active."),
 	    ControllerButton_NONE,
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "AutomapMoveLeft",
 	    N_("Automap Move Left"),
 	    N_("Moves the automap left when active."),
 	    ControllerButton_NONE,
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "AutomapMoveRight",
 	    N_("Automap Move Right"),
 	    N_("Moves the automap right when active."),
 	    ControllerButton_NONE,
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "MouseUp",
 	    N_("Move mouse up"),
 	    N_("Simulates upward mouse movement."),
 	    { ControllerButton_BUTTON_BACK, ControllerButton_BUTTON_DPAD_UP },
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "MouseDown",
 	    N_("Move mouse down"),
 	    N_("Simulates downward mouse movement."),
 	    { ControllerButton_BUTTON_BACK, ControllerButton_BUTTON_DPAD_DOWN },
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "MouseLeft",
 	    N_("Move mouse left"),
 	    N_("Simulates leftward mouse movement."),
 	    { ControllerButton_BUTTON_BACK, ControllerButton_BUTTON_DPAD_LEFT },
-	    [] { });
+	    [] {});
 	options.Padmapper.AddAction(
 	    "MouseRight",
 	    N_("Move mouse right"),
 	    N_("Simulates rightward mouse movement."),
 	    { ControllerButton_BUTTON_BACK, ControllerButton_BUTTON_DPAD_RIGHT },
-	    [] { });
+	    [] {});
 	auto leftMouseDown = [] {
 		const ControllerButtonCombo standGroundCombo = GetOptions().Padmapper.ButtonComboForAction("StandGround");
 		const bool standGround = StandToggle || IsControllerButtonComboPressed(standGroundCombo);
@@ -2869,7 +2854,7 @@ bool TryIconCurs()
 			NetSendCmdLocParam4(true, CMD_SPELLXYD, cursPosition, static_cast<int8_t>(spellID), static_cast<uint8_t>(spellType), static_cast<uint16_t>(sd), spellFrom);
 		} else if (pcursmonst != -1 && leveltype != DTYPE_TOWN) {
 			NetSendCmdParam4(true, CMD_SPELLID, pcursmonst, static_cast<int8_t>(spellID), static_cast<uint8_t>(spellType), spellFrom);
-		} else if (PlayerUnderCursor != nullptr && !myPlayer.friendlyMode) {
+		} else if (PlayerUnderCursor != nullptr && !PlayerUnderCursor->hasNoLife() && !myPlayer.friendlyMode) {
 			NetSendCmdParam4(true, CMD_SPELLPID, PlayerUnderCursor->getId(), static_cast<int8_t>(spellID), static_cast<uint8_t>(spellType), spellFrom);
 		} else {
 			NetSendCmdLocParam3(true, CMD_SPELLXY, cursPosition, static_cast<int8_t>(spellID), static_cast<uint8_t>(spellType), spellFrom);
@@ -3153,13 +3138,7 @@ tl::expected<void, std::string> LoadGameLevelDungeon(bool firstflag, lvl_entry l
 void LoadGameLevelSyncPlayerEntry(lvl_entry lvldir)
 {
 	for (Player &player : Players) {
-		if (!player.plractive || !player.isOnActiveLevel())
-			continue;
-
-		// Include player if:
-		// 1. They're not changing levels (normal case for remote multiplayer players)
-		// 2. OR they're a local player (MyPlayer or local coop players change levels together)
-		if (!player._pLvlChanging || IsLocalPlayer(player)) {
+		if (player.plractive && player.isOnActiveLevel() && (!player._pLvlChanging || &player == MyPlayer)) {
 			if (player._pHitPoints > 0) {
 				if (lvldir != ENTRY_LOAD)
 					SyncInitPlrPos(player);
@@ -3194,12 +3173,6 @@ void LoadGameLevelInitPlayers(bool firstflag, lvl_entry lvldir)
 			InitPlayerGFX(player);
 			if (lvldir != ENTRY_LOAD)
 				InitPlayer(player, firstflag);
-
-			// Clear level changing flag for local coop players
-			// In single-player local coop, there's no network message to clear this flag
-			if (IsLocalCoopPlayer(player)) {
-				player._pLvlChanging = false;
-			}
 		}
 	}
 }
@@ -3384,6 +3357,7 @@ tl::expected<void, std::string> LoadGameLevel(bool firstflag, lvl_entry lvldir)
 	LoadGameLevelStopMusic(neededTrack);
 	LoadGameLevelResetCursor();
 	SetRndSeedForDungeonLevel();
+	NaKrulTomeSequence = 0;
 
 	IncProgress();
 

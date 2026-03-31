@@ -171,7 +171,7 @@ int CapVolume(int volume)
 
 void OptionAudioChanged()
 {
-	effects_cleanup_sfx();
+	effects_cleanup_sfx(false);
 	music_stop();
 	snd_deinit();
 	snd_init();
@@ -193,11 +193,18 @@ const auto OptionChangeDevice = (GetOptions().Audio.device.SetValueChangedCallba
 
 void ClearDuplicateSounds()
 {
-	const std::lock_guard<SdlMutex> lock(*duplicateSoundsMutex);
-	duplicateSounds.clear();
+	// Move sound samples to a temporary list,
+	// avoiding a deadlock that involves SDL's
+	// mixer lock being taken by finalizers
+	std::list<std::unique_ptr<SoundSample>> drain;
+	{
+		const std::lock_guard<SdlMutex> lock(*duplicateSoundsMutex);
+		drain = std::move(duplicateSounds);
+		duplicateSounds.clear();
+	}
 }
 
-void snd_play_snd(TSnd *pSnd, int lVolume, int lPan)
+void snd_play_snd(TSnd *pSnd, int lVolume, int lPan, int userVolume)
 {
 	if (pSnd == nullptr || !gbSoundOn) {
 		return;
@@ -215,7 +222,7 @@ void snd_play_snd(TSnd *pSnd, int lVolume, int lPan)
 			return;
 	}
 
-	sound->PlayWithVolumeAndPan(lVolume, *GetOptions().Audio.soundVolume, lPan);
+	sound->PlayWithVolumeAndPan(lVolume, userVolume, lPan);
 	pSnd->start_tc = tc;
 }
 
@@ -348,8 +355,6 @@ void music_start(_music_id nTrack)
 	}
 
 	music.SetVolume(*GetOptions().Audio.musicVolume, VOLUME_MIN, VOLUME_MAX);
-	if (!diablo_is_focused())
-		music_mute();
 	if (!music.Play(/*numIterations=*/0)) {
 		LogError(LogCategory::Audio, "Aulib::Stream::play (from music_start): {}", SDL_GetError());
 		music_stop();
@@ -389,6 +394,16 @@ int sound_get_or_set_sound_volume(int volume)
 	GetOptions().Audio.soundVolume.SetValue(volume);
 
 	return *GetOptions().Audio.soundVolume;
+}
+
+int SoundGetOrSetAudioCuesVolume(int volume)
+{
+	if (volume == 1)
+		return *GetOptions().Audio.audioCuesVolume;
+
+	GetOptions().Audio.audioCuesVolume.SetValue(volume);
+
+	return *GetOptions().Audio.audioCuesVolume;
 }
 
 void music_mute()

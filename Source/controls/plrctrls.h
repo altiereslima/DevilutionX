@@ -63,11 +63,6 @@ void InvalidateInventorySlot();
 void FocusOnInventory();
 void PerformSpellAction();
 void QuickCast(size_t slot);
-void HotSpellMove(AxisDirection dir);
-
-// Process D-pad/stick navigation for game panels (inventory, character, quest log, etc.)
-// Used by local coop players to navigate panels with their own D-pad input
-void ProcessGamePanelNavigation(AxisDirection dir);
 
 extern int speedspellcount;
 

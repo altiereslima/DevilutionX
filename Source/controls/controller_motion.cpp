@@ -9,12 +9,11 @@
 #include <SDL.h>
 #endif
 
-#include "control.h"
+#include "control/control.hpp"
 #include "controls/control_mode.hpp"
 #include "controls/controller.h"
 #ifndef USE_SDL1
 #include "controls/devices/game_controller.h"
-#include "controls/local_coop.hpp"
 #endif
 #include "controls/devices/joystick.h"
 #include "controls/game_controls.h"
@@ -194,15 +193,6 @@ bool IsControllerMotion(const SDL_Event &event)
 void ProcessControllerMotion(const SDL_Event &event)
 {
 #ifndef USE_SDL1
-	// When local co-op is enabled, only update global stick values for player 1's controller.
-	// Local co-op players (2-4) have their own stick tracking in LocalCoopPlayer struct.
-	// If we update global values for all controllers, player 2's stick would overwrite player 1's!
-	if (IsLocalCoopEnabled() && GetLocalCoopPlayerIndex(event) >= 0) {
-		// This event is from a local co-op player's controller, skip updating global values.
-		// The local co-op system handles this controller's input separately.
-		return;
-	}
-
 	GameController *const controller = GameController::Get(event);
 	if (controller != nullptr && devilution::GameController::ProcessAxisMotion(event)) {
 		ScaleJoysticks();
@@ -217,17 +207,48 @@ void ProcessControllerMotion(const SDL_Event &event)
 	}
 }
 
-AxisDirection GetLeftStickOrDpadDirection(bool usePadmapper)
+AxisDirection GetAnalogStickDirection(float stickX, float stickY)
 {
-	const float stickX = leftStickX;
-	const float stickY = leftStickY;
+	// avoid sqrt() by comparing squared magnitudes
+	const float magnitudeSquared = stickX * stickX + stickY * stickY;
+	const float thresholdSquared = StickDirectionThreshold * StickDirectionThreshold;
+	if (magnitudeSquared < thresholdSquared)
+		return { AxisDirectionX_NONE, AxisDirectionY_NONE };
 
+	const float absX = std::fabs(stickX);
+	const float absY = std::fabs(stickY);
 	AxisDirection result { AxisDirectionX_NONE, AxisDirectionY_NONE };
 
-	bool isUpPressed = stickY >= 0.5;
-	bool isDownPressed = stickY <= -0.5;
-	bool isLeftPressed = stickX <= -0.5;
-	bool isRightPressed = stickX >= 0.5;
+	// 8-way sectoring with 22.5° cutoffs
+	constexpr float DiagonalCutoff = 0.41421356F; // tan(22.5°)
+	if (absX == 0.0F) {
+		result.y = stickY > 0 ? AxisDirectionY_UP : AxisDirectionY_DOWN;
+		return result;
+	}
+
+	const float ratio = absY / absX;
+	if (ratio <= DiagonalCutoff) {
+		result.x = stickX > 0 ? AxisDirectionX_RIGHT : AxisDirectionX_LEFT;
+		return result;
+	}
+	if (ratio >= 1.0F / DiagonalCutoff) {
+		result.y = stickY > 0 ? AxisDirectionY_UP : AxisDirectionY_DOWN;
+		return result;
+	}
+
+	result.x = stickX > 0 ? AxisDirectionX_RIGHT : AxisDirectionX_LEFT;
+	result.y = stickY > 0 ? AxisDirectionY_UP : AxisDirectionY_DOWN;
+	return result;
+}
+
+AxisDirection GetLeftStickOrDpadDirection(bool usePadmapper)
+{
+	AxisDirection result = GetAnalogStickDirection(leftStickX, leftStickY);
+
+	bool isUpPressed = false;
+	bool isDownPressed = false;
+	bool isLeftPressed = false;
+	bool isRightPressed = false;
 
 	if (usePadmapper) {
 		isUpPressed |= PadmapperIsActionActive("MoveUp");

@@ -17,8 +17,7 @@
 
 #include "automap.h"
 #include "codec.h"
-#include "control.h"
-#include "controls/local_coop.hpp"
+#include "control/control.hpp"
 #include "cursor.h"
 #include "dead.h"
 #include "doom.h"
@@ -34,10 +33,10 @@
 #include "monsters/validation.hpp"
 #include "mpq/mpq_common.hpp"
 #include "pfile.h"
-#include "playerdat.hpp"
 #include "plrmsg.h"
 #include "qol/stash.h"
 #include "stores.h"
+#include "tables/playerdat.hpp"
 #include "utils/algorithm/container.hpp"
 #include "utils/endian_read.hpp"
 #include "utils/endian_swap.hpp"
@@ -2932,8 +2931,6 @@ void SaveGame()
 	gbValidSaveFile = true;
 	pfile_write_hero(/*writeGameData=*/true);
 	sfile_write_stash();
-	// Also save local co-op players to their respective save slots
-	SaveLocalCoopPlayers(/*writeGameData=*/false);
 }
 
 void SaveLevel(SaveWriter &saveWriter)

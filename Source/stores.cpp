@@ -12,7 +12,6 @@
 #include <fmt/format.h>
 
 #include "controls/control_mode.hpp"
-#include "controls/local_coop.hpp"
 #include "controls/plrctrls.h"
 #include "cursor.h"
 #include "engine/backbuffer_state.hpp"
@@ -22,12 +21,13 @@
 #include "engine/render/text_render.hpp"
 #include "engine/trn.hpp"
 #include "game_mode.hpp"
+#include "lua/lua_event.hpp"
 #include "minitext.h"
 #include "multi.h"
 #include "options.h"
 #include "panels/info_box.hpp"
 #include "qol/stash.h"
-#include "townerdat.hpp"
+#include "tables/townerdat.hpp"
 #include "towners.h"
 #include "utils/format_int.hpp"
 #include "utils/language.h"
@@ -176,22 +176,6 @@ int LineHeight()
 int TextHeight()
 {
 	return IsSmallFontTall() ? LargeTextHeight : SmallTextHeight;
-}
-
-/**
- * @brief Get the player who is currently using the store.
- *
- * In local co-op, returns the player who initiated the store interaction.
- * Otherwise, returns MyPlayer.
- */
-Player &GetStorePlayer()
-{
-	if (IsLocalCoopStoreActive()) {
-		uint8_t playerId = GetLocalCoopStoreOwnerPlayerId();
-		if (playerId < Players.size())
-			return Players[playerId];
-	}
-	return *MyPlayer;
 }
 
 void CalculateLineHeights()
@@ -355,7 +339,7 @@ void PrintStoreItem(const Item &item, int l, UiFlags flags, bool cursIndent = fa
 
 bool StoreAutoPlace(Item &item, bool persistItem)
 {
-	Player &player = GetStorePlayer();
+	Player &player = *MyPlayer;
 
 	if (AutoEquipEnabled(player, item) && AutoEquip(player, item, persistItem, true)) {
 		return true;
@@ -418,7 +402,7 @@ void ScrollSmithBuy(int idx)
 
 uint32_t TotalPlayerGold()
 {
-	return GetStorePlayer()._pGold + Stash.gold;
+	return MyPlayer->_pGold + Stash.gold;
 }
 
 // TODO: Change `_iIvalue` to be unsigned instead of passing `int` here.
@@ -441,7 +425,7 @@ void StartSmithBuy()
 
 	CurrentItemIndex = 0;
 	for (Item &item : SmithItems) {
-		item._iStatFlag = GetStorePlayer().CanUseItem(item);
+		item._iStatFlag = MyPlayer->CanUseItem(item);
 		CurrentItemIndex++;
 	}
 
@@ -463,7 +447,7 @@ bool StartSmithPremiumBuy()
 {
 	CurrentItemIndex = 0;
 	for (Item &item : PremiumItems) {
-		item._iStatFlag = GetStorePlayer().CanUseItem(item);
+		item._iStatFlag = MyPlayer->CanUseItem(item);
 		CurrentItemIndex++;
 	}
 	if (CurrentItemIndex == 0) {
@@ -493,9 +477,9 @@ bool SmithSellOk(int i)
 	Item *pI;
 
 	if (i >= 0) {
-		pI = &GetStorePlayer().InvList[i];
+		pI = &MyPlayer->InvList[i];
 	} else {
-		pI = &GetStorePlayer().SpdList[-(i + 1)];
+		pI = &MyPlayer->SpdList[-(i + 1)];
 	}
 
 	if (pI->isEmpty())
@@ -533,7 +517,7 @@ void StartSmithSell()
 		item.clear();
 	}
 
-	const Player &myPlayer = GetStorePlayer();
+	const Player &myPlayer = *MyPlayer;
 
 	for (int8_t i = 0; i < myPlayer._pNumInv; i++) {
 		if (CurrentItemIndex >= 48)
@@ -592,7 +576,7 @@ void StartSmithSell()
 
 bool SmithRepairOk(int i)
 {
-	const Player &myPlayer = GetStorePlayer();
+	const Player &myPlayer = *MyPlayer;
 	const Item &item = myPlayer.InvList[i];
 
 	if (item.isEmpty())
@@ -618,7 +602,7 @@ void StartSmithRepair()
 		item.clear();
 	}
 
-	Player &myPlayer = GetStorePlayer();
+	Player &myPlayer = *MyPlayer;
 
 	auto &helmet = myPlayer.InvBody[INVLOC_HEAD];
 	if (!helmet.isEmpty() && helmet._iDurability != helmet._iMaxDur) {
@@ -670,24 +654,8 @@ void StartSmithRepair()
 	AddItemListBackButton();
 }
 
-void FillManaPlayer()
-{
-	if (!*GetOptions().Gameplay.adriaRefillsMana)
-		return;
-
-	Player &myPlayer = GetStorePlayer();
-
-	if (myPlayer._pMana != myPlayer._pMaxMana) {
-		PlaySFX(SfxID::CastHealing);
-	}
-	myPlayer._pMana = myPlayer._pMaxMana;
-	myPlayer._pManaBase = myPlayer._pMaxManaBase;
-	RedrawComponent(PanelDrawComponent::Mana);
-}
-
 void StartWitch()
 {
-	FillManaPlayer();
 	IsTextFullSize = false;
 	HasScrollbar = false;
 	AddSText(0, 2, _("Witch's shack"), UiFlags::ColorWhitegold | UiFlags::AlignCenter, false);
@@ -711,7 +679,7 @@ void WitchBookLevel(Item &bookItem)
 	if (bookItem._iMiscId != IMISC_BOOK)
 		return;
 	bookItem._iMinMag = GetSpellData(bookItem._iSpell).minInt;
-	uint8_t spellLevel = GetStorePlayer()._pSplLvl[static_cast<int8_t>(bookItem._iSpell)];
+	uint8_t spellLevel = MyPlayer->_pSplLvl[static_cast<int8_t>(bookItem._iSpell)];
 	while (spellLevel > 0) {
 		bookItem._iMinMag += 20 * bookItem._iMinMag / 100;
 		spellLevel--;
@@ -738,7 +706,7 @@ void StartWitchBuy()
 	CurrentItemIndex = 0;
 	for (Item &item : WitchItems) {
 		WitchBookLevel(item);
-		item._iStatFlag = GetStorePlayer().CanUseItem(item);
+		item._iStatFlag = MyPlayer->CanUseItem(item);
 		CurrentItemIndex++;
 	}
 	NumTextLines = std::max(CurrentItemIndex - 4, 0);
@@ -751,9 +719,9 @@ bool WitchSellOk(int i)
 	bool rv = false;
 
 	if (i >= 0)
-		pI = &GetStorePlayer().InvList[i];
+		pI = &MyPlayer->InvList[i];
 	else
-		pI = &GetStorePlayer().SpdList[-(i + 1)];
+		pI = &MyPlayer->SpdList[-(i + 1)];
 
 	if (pI->_itype == ItemType::Misc)
 		rv = true;
@@ -780,7 +748,7 @@ void StartWitchSell()
 		item.clear();
 	}
 
-	const Player &myPlayer = GetStorePlayer();
+	const Player &myPlayer = *MyPlayer;
 
 	for (int i = 0; i < myPlayer._pNumInv; i++) {
 		if (CurrentItemIndex >= 48)
@@ -840,7 +808,7 @@ void StartWitchSell()
 
 bool WitchRechargeOk(int i)
 {
-	const auto &item = GetStorePlayer().InvList[i];
+	const auto &item = MyPlayer->InvList[i];
 
 	if (item._itype == ItemType::Staff && item._iCharges != item._iMaxCharges) {
 		return true;
@@ -873,7 +841,7 @@ void StartWitchRecharge()
 		item.clear();
 	}
 
-	const Player &myPlayer = GetStorePlayer();
+	const Player &myPlayer = *MyPlayer;
 	const auto &leftHand = myPlayer.InvBody[INVLOC_HAND_LEFT];
 
 	if ((leftHand._itype == ItemType::Staff || leftHand._iMiscId == IMISC_UNIQUE) && leftHand._iCharges != leftHand._iMaxCharges) {
@@ -1001,7 +969,7 @@ void SStartBoyBuy()
 	AddSText(20, 1, _("I have this item for sale:"), UiFlags::ColorWhitegold, false);
 	AddSLine(3);
 
-	BoyItem._iStatFlag = GetStorePlayer().CanUseItem(BoyItem);
+	BoyItem._iStatFlag = MyPlayer->CanUseItem(BoyItem);
 	const UiFlags itemColor = BoyItem.getTextColorWithStatCheck();
 	AddSText(20, 10, BoyItem.getName(), itemColor, true, BoyItem._iCurs, true);
 	if (gbIsHellfire)
@@ -1022,7 +990,7 @@ void SStartBoyBuy()
 
 void HealPlayer()
 {
-	Player &myPlayer = GetStorePlayer();
+	Player &myPlayer = *MyPlayer;
 
 	if (myPlayer._pHitPoints != myPlayer._pMaxHP) {
 		PlaySFX(SfxID::CastHealing);
@@ -1067,7 +1035,7 @@ void StartHealerBuy()
 
 	CurrentItemIndex = 0;
 	for (Item &item : HealerItems) {
-		item._iStatFlag = GetStorePlayer().CanUseItem(item);
+		item._iStatFlag = MyPlayer->CanUseItem(item);
 		CurrentItemIndex++;
 	}
 
@@ -1116,7 +1084,7 @@ void StartStorytellerIdentify()
 		item.clear();
 	}
 
-	Player &myPlayer = GetStorePlayer();
+	Player &myPlayer = *MyPlayer;
 
 	auto &helmet = myPlayer.InvBody[INVLOC_HEAD];
 	if (IdItemOk(&helmet)) {
@@ -1310,7 +1278,6 @@ void SmithEnter()
 		break;
 	case 20:
 		ActiveStore = TalkID::None;
-		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -1326,7 +1293,7 @@ void SmithBuyItem(Item &item)
 	StoreAutoPlace(item, true);
 	int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
 	SmithItems.erase(SmithItems.begin() + idx);
-	CalcPlrInv(GetStorePlayer(), true);
+	CalcPlrInv(*MyPlayer, true);
 }
 
 void SmithBuyEnter()
@@ -1367,7 +1334,7 @@ void SmithBuyPItem(Item &item)
 	StoreAutoPlace(item, true);
 
 	int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
-	ReplacePremium(GetStorePlayer(), idx);
+	ReplacePremium(*MyPlayer, idx);
 }
 
 void SmithPremiumBuyEnter()
@@ -1417,7 +1384,7 @@ bool StoreGoldFit(Item &item)
  */
 void StoreSellItem()
 {
-	Player &myPlayer = GetStorePlayer();
+	Player &myPlayer = *MyPlayer;
 
 	int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
 	if (PlayerItemIndexes[idx] >= 0)
@@ -1473,7 +1440,7 @@ void SmithRepairItem(int price)
 
 	const int8_t i = PlayerItemIndexes[idx];
 
-	Player &myPlayer = GetStorePlayer();
+	Player &myPlayer = *MyPlayer;
 
 	if (i < 0) {
 		if (i == -1)
@@ -1535,7 +1502,6 @@ void WitchEnter()
 		break;
 	case 20:
 		ActiveStore = TalkID::None;
-		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -1557,7 +1523,7 @@ void WitchBuyItem(Item &item)
 		WitchItems.erase(WitchItems.begin() + idx);
 	}
 
-	CalcPlrInv(GetStorePlayer(), true);
+	CalcPlrInv(*MyPlayer, true);
 }
 
 void WitchBuyEnter()
@@ -1619,7 +1585,7 @@ void WitchRechargeItem(int price)
 	const int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
 	PlayerItems[idx]._iCharges = PlayerItems[idx]._iMaxCharges;
 
-	Player &myPlayer = GetStorePlayer();
+	Player &myPlayer = *MyPlayer;
 
 	const int8_t i = PlayerItemIndexes[idx];
 	if (i < 0) {
@@ -1674,7 +1640,6 @@ void BoyEnter()
 
 	if ((CurrentTextLine != 8 && !BoyItem.isEmpty()) || (CurrentTextLine != 12 && BoyItem.isEmpty())) {
 		ActiveStore = TalkID::None;
-		ClearLocalCoopStoreOwner();
 		return;
 	}
 
@@ -1690,7 +1655,7 @@ void BoyBuyItem(Item &item, int itemPrice)
 	StoreAutoPlace(item, true);
 	item.clear();
 	OldActiveStore = TalkID::Boy;
-	CalcPlrInv(GetStorePlayer(), true);
+	CalcPlrInv(*MyPlayer, true);
 	OldTextLine = 12;
 }
 
@@ -1722,14 +1687,13 @@ void HealerBuyItem(Item &item)
 	}
 	idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
 	HealerItems.erase(HealerItems.begin() + idx);
-	CalcPlrInv(GetStorePlayer(), true);
+	CalcPlrInv(*MyPlayer, true);
 }
 
 void BoyBuyEnter()
 {
 	if (CurrentTextLine != 10) {
 		ActiveStore = TalkID::None;
-		ClearLocalCoopStoreOwner();
 		return;
 	}
 
@@ -1759,7 +1723,7 @@ void BoyBuyEnter()
 
 void StorytellerIdentifyItem(Item &item)
 {
-	Player &myPlayer = GetStorePlayer();
+	Player &myPlayer = *MyPlayer;
 
 	const int8_t idx = PlayerItemIndexes[((OldTextLine - PreviousScrollPos) / 4) + OldScrollPos];
 	if (idx < 0) {
@@ -1850,7 +1814,6 @@ void HealerEnter()
 		break;
 	case 18:
 		ActiveStore = TalkID::None;
-		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -1897,7 +1860,6 @@ void StorytellerEnter()
 		break;
 	case 18:
 		ActiveStore = TalkID::None;
-		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -1974,7 +1936,6 @@ void TavernEnter()
 		break;
 	case 18:
 		ActiveStore = TalkID::None;
-		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -1990,7 +1951,6 @@ void BarmaidEnter()
 		break;
 	case 14:
 		ActiveStore = TalkID::None;
-		ClearLocalCoopStoreOwner();
 		IsStashOpen = true;
 		Stash.RefreshItemStatFlags();
 		invflag = true;
@@ -2002,7 +1962,6 @@ void BarmaidEnter()
 		break;
 	case 18:
 		ActiveStore = TalkID::None;
-		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -2018,7 +1977,6 @@ void DrunkEnter()
 		break;
 	case 18:
 		ActiveStore = TalkID::None;
-		ClearLocalCoopStoreOwner();
 		break;
 	}
 }
@@ -2090,7 +2048,6 @@ void InitStores()
 {
 	ClearSText(0, NumStoreLines);
 	ActiveStore = TalkID::None;
-	ClearLocalCoopStoreOwner();
 	IsTextFullSize = false;
 	HasScrollbar = false;
 	PremiumItemCount = 0;
@@ -2107,7 +2064,7 @@ void InitStores()
 
 void SetupTownStores()
 {
-	const Player &myPlayer = GetStorePlayer();
+	const Player &myPlayer = *MyPlayer;
 
 	int l = myPlayer.getCharacterLevel() / 2;
 	if (!gbIsMultiplayer) {
@@ -2132,7 +2089,6 @@ void FreeStoreMem()
 		FreeHalfSizeItemSprites();
 	}
 	ActiveStore = TalkID::None;
-	ClearLocalCoopStoreOwner();
 	for (STextStruct &entry : TextLine) {
 		entry.text.clear();
 		entry.text.shrink_to_fit();
@@ -2244,6 +2200,37 @@ void StartStore(TalkID s)
 	CloseGoldDrop();
 	ClearSText(0, NumStoreLines);
 	ReleaseStoreBtn();
+
+	// Fire StoreOpened Lua event for main store entries
+	switch (s) {
+	case TalkID::Smith:
+		lua::StoreOpened("griswold");
+		break;
+	case TalkID::Witch:
+		lua::StoreOpened("adria");
+		break;
+	case TalkID::Boy:
+		lua::StoreOpened("wirt");
+		break;
+	case TalkID::Healer:
+		lua::StoreOpened("pepin");
+		break;
+	case TalkID::Storyteller:
+		lua::StoreOpened("cain");
+		break;
+	case TalkID::Tavern:
+		lua::StoreOpened("ogden");
+		break;
+	case TalkID::Drunk:
+		lua::StoreOpened("farnham");
+		break;
+	case TalkID::Barmaid:
+		lua::StoreOpened("gillian");
+		break;
+	default:
+		break;
+	}
+
 	switch (s) {
 	case TalkID::Smith:
 		StartSmith();
@@ -2410,8 +2397,6 @@ void StoreESC()
 	case TalkID::Drunk:
 	case TalkID::Barmaid:
 		ActiveStore = TalkID::None;
-		// Clear local co-op store owner when exiting store
-		ClearLocalCoopStoreOwner();
 		break;
 	case TalkID::Gossip:
 		StartStore(OldActiveStore);
@@ -2571,7 +2556,7 @@ void StoreNext()
 
 void TakePlrsMoney(int cost)
 {
-	Player &myPlayer = GetStorePlayer();
+	Player &myPlayer = *MyPlayer;
 
 	myPlayer._pGold -= std::min(cost, myPlayer._pGold);
 
